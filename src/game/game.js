@@ -2,10 +2,12 @@ import { createGL } from '../renderer/gl.js'
 import { createSceneRenderer } from '../renderer/scene.js'
 import { createHud } from './hud.js'
 import { createInputController } from './input.js'
-import { createInitialState, renderGameToText, startRun, updateState } from './state.js'
+import { createInitialState, renderGameToText, startRun, updateState, buildRoadSamples, buildProps, buildStopMarker } from './state.js'
 
 function resizeCanvasToDisplaySize(canvas, gl) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2)
+  // [v7.8] Force DPR = 1.0 to prevent stuttering on high-res screens (Retina)
+  // High buffer size can cause fill-rate stutter.
+  const dpr = 1.0
   const width = Math.max(1, Math.floor(canvas.clientWidth * dpr))
   const height = Math.max(1, Math.floor(canvas.clientHeight * dpr))
 
@@ -138,16 +140,69 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     prevControls = { ...controls }
   }
 
-  function frame(now) {
-    if (stopped) {
-      return
-    }
+  // [v7.7] Helper for interpolation
+  function lerp(a, b, t) {
+    return a + (b - a) * t
+  }
 
-    const dt = Math.min((now - lastTime) / 1000, 1 / 20)
+  // [v7.5] Fixed Timestep Loop (60Hz Physics)
+  const FIXED_STEP = 1 / 60
+  let accumulator = 0
+
+  function frame(now) {
+    if (stopped) return
+
+    let dt = (now - lastTime) / 1000
+    if (dt > 0.25) dt = 0.25
     lastTime = now
 
+    accumulator += dt
+
     try {
-      updateAndRender(dt, now / 1000)
+      while (accumulator >= FIXED_STEP) {
+        const controls = input.read()
+
+        if (state.mode === 'menu' && (controls.accelerate || controls.left || controls.right || controls.brake)) {
+          startRun(state)
+        } else if (state.mode === 'ended' && controls.accelerate && !prevControls.accelerate) {
+          startRun(state)
+        }
+        prevControls = { ...controls }
+
+        updateState(state, controls, FIXED_STEP)
+        accumulator -= FIXED_STEP
+      }
+
+      const alpha = accumulator / FIXED_STEP
+
+      // [v7.7] Interpolation Logic
+      // Create a temporary render state object with interpolated values
+      // Note: We don't modify the actual state, just pass a view object
+      const renderState = { ...state }
+
+      if (state.mode === 'running' || state.mode === 'ended') {
+        renderState.playerX = lerp(state.prevPlayerX, state.playerX, alpha)
+        renderState.lateralVel = lerp(state.prevLateralVel, state.lateralVel, alpha)
+        renderState.steeringValue = lerp(state.prevSteeringValue, state.steeringValue, alpha)
+        renderState.carYaw = lerp(state.prevCarYaw, state.carYaw, alpha)
+        renderState.carRoll = lerp(state.prevCarRoll, state.carRoll, alpha)
+        renderState.pitch = lerp(state.prevPitch, state.pitch, alpha)
+        renderState.distance = lerp(state.prevDistance, state.distance, alpha)
+        // TrackX is crucial for background, interpolate it too
+        // Wait, trackX is not in state prev list? Added in step 846. Yes.
+        renderState.trackX = lerp(state.prevTrackX || 0, state.trackX, alpha)
+      }
+
+      // Generate Visuals based on Interpolated Distance
+      // We must call this here because we removed it from updateState
+      state.roadSamples = buildRoadSamples(renderState.distance, renderState)
+      state.props = buildProps(state.roadSamples, renderState)
+      state.stopMarker = buildStopMarker(renderState)
+
+      resizeCanvasToDisplaySize(canvas, gl)
+      renderer.draw(renderState, now / 1000)
+      syncHud()
+
     } catch (error) {
       hud.reportError(error)
       stop()
