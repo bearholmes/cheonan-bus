@@ -31,13 +31,35 @@ body,
   font-family: 'Press Start 2P', 'IBM Plex Mono', monospace;
 }
 
-.hud-main { display: flex; gap: 22px; justify-content: flex-start; }
+.hud-main {
+  display: flex;
+  gap: 22px;
+  justify-content: flex-start;
+}
 
-.hud-box { min-width: 160px; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.hud-box {
+  min-width: 160px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
 
-.hud-label { font-size: 14px; letter-spacing: 0.04em; color: #f3f3da; text-shadow: 2px 2px 0 #000; }
+.hud-label {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: #f3f3da;
+  text-shadow: 2px 2px 0 #000;
+}
 
-.hud-timer { margin-top: 8px; font-size: 30px; line-height: 1; font-weight: 700; color: #fff26f; text-shadow: 2px 2px 0 #000; }
+.hud-timer {
+  margin-top: 8px;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff26f;
+  text-shadow: 2px 2px 0 #000;
+}
 
 .hud-speed-row {
   margin-top: 6px;
@@ -46,15 +68,43 @@ body,
   gap: 6px;
 }
 
-.hud-speed-value { font-size: 30px; line-height: 1; font-weight: 700; color: #fff26f; text-shadow: 2px 2px 0 #000; }
+.hud-speed-value {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 700;
+  color: #fff26f;
+  text-shadow: 2px 2px 0 #000;
+}
 
-.hud-speed-unit { font-size: 16px; color: #f3f3da; text-shadow: 2px 2px 0 #000; }
+.hud-speed-unit {
+  font-size: 16px;
+  color: #f3f3da;
+  text-shadow: 2px 2px 0 #000;
+}
 
-.hud-meter { margin-top: 6px; height: 8px; border-radius: 0; background: rgba(0,0,0,0.45); overflow: hidden; }
+.hud-meter {
+  margin-top: 6px;
+  height: 8px;
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
 
-.hud-meter-fill { height: 100%; width: 0; border-radius: 0; background: linear-gradient(90deg, #ffffff, #f8d95e); transition: width 90ms linear; }
+.hud-meter-fill {
+  height: 100%;
+  width: 0;
+  border-radius: 0;
+  background: linear-gradient(90deg, #ffffff, #f8d95e);
+  transition: width 90ms linear;
+}
 
-.hud-errors { min-height: 15px; font-size: 11px; color: #ffd1d6; opacity: 0.9; text-shadow: 1px 1px 0 #000; }
+.hud-errors {
+  min-height: 15px;
+  font-size: 11px;
+  color: #ffd1d6;
+  opacity: 0.9;
+  text-shadow: 1px 1px 0 #000;
+}
 
 .hud-status {
   margin-top: 4px;
@@ -150,7 +200,80 @@ body,
   from {
     transform: translateX(-1px);
   }
+
   to {
     transform: translateX(1px);
   }
+}
+
+/* Seating: Bottom Right */
+.hud-seating {
+  position: fixed;
+  bottom: 30px;
+  right: 30px;
+  margin-top: 0;
+
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: fit-content;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.seat-row {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+}
+
+.seat {
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: transparent;
+  position: relative;
+  transition: all 0.2s ease-out;
+}
+
+/* No headrest decoration */
+.seat::after {
+  display: none;
+}
+
+.seat.occupied {
+  background: #00ffcc;
+  border-color: #00ffcc;
+  box-shadow: 0 0 6px rgba(0, 255, 204, 0.6);
+  transform: scale(1.1);
+}
+
+.seat-aisle {
+  width: 6px;
+  height: 100%;
+}
+
+/* Move Speed/RPM to Bottom Left */
+.hud-speed-row {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  z-index: 10;
+}
+
+.hud-meter {
+  /* Attach above speed row if possible, or just hack it */
+  position: fixed;
+  bottom: 70px;
+  left: 30px;
+  width: 200px;
 }

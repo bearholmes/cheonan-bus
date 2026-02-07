@@ -47,6 +47,9 @@ app.innerHTML = `
       <div class="hud-stop-meter"><div class="hud-stop-fill" data-role="stop-fill"></div></div>
       <span class="hud-stop-distance" data-role="stop-distance">000m</span>
     </div>
+    <div class="hud-seating" data-role="seating">
+      <!-- Seats will be injected by hud.js -->
+    </div>
     <div class="hud-status" data-role="message"></div>
     <div class="hud-stamp" data-role="stamp"></div>
     <div class="hud-toast hidden" data-role="toast"></div>
