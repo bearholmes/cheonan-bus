@@ -130,10 +130,73 @@ export function createHud(rootElement) {
 
   syncErrors()
 
+  function setSeats(seats) {
+    let seatingElement = rootElement.querySelector('[data-role="seating"]')
+
+    // Safety: Create if missing (e.g. if HTML didn't update)
+    if (!seatingElement) {
+      seatingElement = document.createElement('div')
+      seatingElement.className = 'hud-seating'
+      seatingElement.dataset.role = 'seating'
+      // Insert before status message
+      const msgParams = rootElement.querySelector('[data-role="message"]')
+      if (msgParams) rootElement.insertBefore(seatingElement, msgParams)
+      else rootElement.appendChild(seatingElement)
+    }
+
+    // Force clear and rebuild if it doesn't look right (e.g. missing label)
+    // Just simple check: if no children, build.
+    if (!seatingElement.hasChildNodes() || seatingElement.children.length < 2) {
+      seatingElement.innerHTML = '' // Reset
+      const label = document.createElement('div')
+      label.textContent = '좌석 현황'
+      label.style.fontSize = '10px'
+      label.style.color = '#6b8c9e'
+      label.style.textAlign = 'center'
+      label.style.marginBottom = '4px'
+      seatingElement.appendChild(label)
+
+      // 6 rows, 4 seats per row (2 left, 2 right)
+      // Total 24 seats
+      for (let r = 0; r < 6; r++) {
+        const row = document.createElement('div')
+        row.className = 'seat-row'
+        // Left side
+        for (let c = 0; c < 2; c++) {
+          const seat = document.createElement('div')
+          seat.className = 'seat'
+          seat.dataset.index = r * 4 + c
+          row.appendChild(seat)
+        }
+        // Aisle
+        const aisle = document.createElement('div')
+        aisle.className = 'seat-aisle'
+        row.appendChild(aisle)
+        // Right side
+        for (let c = 2; c < 4; c++) {
+          const seat = document.createElement('div')
+          seat.className = 'seat'
+          seat.dataset.index = r * 4 + c
+          row.appendChild(seat)
+        }
+        seatingElement.appendChild(row)
+      }
+    }
+
+    // Update state
+    const seatNodes = seatingElement.querySelectorAll('.seat')
+    seats.forEach((isOccupied, i) => {
+      if (seatNodes[i]) {
+        seatNodes[i].classList.toggle('occupied', isOccupied)
+      }
+    })
+  }
+
   return {
     setTimer,
     setNav,
     setTelemetry,
+    setSeats,
     setMessage,
     setStamp,
     showToast,

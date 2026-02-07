@@ -29,7 +29,8 @@ export function createInputController(target = window) {
         brake: pressed.has('KeyS') || pressed.has('ArrowDown'),
         left: pressed.has('KeyA') || pressed.has('ArrowLeft'),
         right: pressed.has('KeyD') || pressed.has('ArrowRight'),
-        handbrake: pressed.has('Space')
+        reverse: pressed.has('KeyR'),
+        command: pressed.has('Space') ? 'space' : null
       }
     },
     dispose() {

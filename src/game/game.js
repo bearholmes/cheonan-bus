@@ -19,12 +19,12 @@ function resizeCanvasToDisplaySize(canvas, gl) {
 function tryToggleFullscreen(canvas) {
   if (!document.fullscreenElement) {
     if (canvas.requestFullscreen) {
-      canvas.requestFullscreen().catch(() => {})
+      canvas.requestFullscreen().catch(() => { })
     }
     return
   }
   if (document.exitFullscreen) {
-    document.exitFullscreen().catch(() => {})
+    document.exitFullscreen().catch(() => { })
   }
 }
 
@@ -39,7 +39,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     renderer = createSceneRenderer(gl, (message) => hud.reportError(message))
   } catch (error) {
     hud.reportError(error)
-    return () => {}
+    return () => { }
   }
 
   const state = createInitialState()
@@ -85,6 +85,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
       speedMax: state.speedMax,
       stopHold: state.stopHoldTime
     })
+    hud.setSeats(state.seats)
     const stopDistance = state.nextStopDistance - state.distance
     const turn = state.curveNow > 0.18 ? 'RIGHT' : state.curveNow < -0.18 ? 'LEFT' : 'STRAIGHT'
     const urgency = stopDistance < 30 ? 'alert' : stopDistance < 90 ? 'approach' : 'normal'
@@ -107,12 +108,12 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
         state.result === 'success'
           ? '성공'
           : state.result === 'timeout'
-          ? '시간 초과'
-          : state.result === 'missed-stops'
-          ? '미정차 누적'
-          : state.result === 'offroad'
-          ? '차량 이탈'
-          : '종료'
+            ? '시간 초과'
+            : state.result === 'missed-stops'
+              ? '미정차 누적'
+              : state.result === 'offroad'
+                ? '차량 이탈'
+                : '종료'
       endSummary.textContent = `${label} · 승객 ${state.passengers}/${state.targetPassengers} · 정류장 ${state.stopsServed} · 미정차 ${state.missedStops ?? 0}`
     }
   }

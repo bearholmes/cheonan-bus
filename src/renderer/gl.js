@@ -100,3 +100,15 @@ export function assertNoGLError(gl, where) {
     throw new Error(`WebGL error at ${where}: ${errors.join(', ')}`)
   }
 }
+
+export function getInstancedExt(gl) {
+  const ext = gl.getExtension('ANGLE_instanced_arrays')
+  if (!ext) {
+    // WebGL 2.0 supports this natively, but for WebGL 1.0 we need the extension.
+    return null
+  }
+  return ext
+}
+
+
+

@@ -26,3 +26,50 @@ export function bindMesh(gl, mesh, positionLocation, colorLocation) {
   gl.enableVertexAttribArray(colorLocation)
   gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 24, 12)
 }
+export function createInstancedMesh(gl, geometry) {
+  const mesh = createMesh(gl, geometry)
+  return {
+    ...mesh,
+    instanceBuffers: {}
+  }
+}
+
+export function createInstanceBuffer(gl, data, numComponents) {
+  const buffer = gl.createBuffer()
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW)
+  return {
+    buffer,
+    numComponents,
+    count: data.length / numComponents
+  }
+}
+
+export function bindInstancedMesh(gl, ext, mesh, positionLocation, colorLocation, instanceAttributes) {
+  // Bind standard geometry
+  gl.bindBuffer(gl.ARRAY_BUFFER, mesh.vertexBuffer)
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.indexBuffer)
+
+  gl.enableVertexAttribArray(positionLocation)
+  gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 24, 0)
+  if (ext) ext.vertexAttribDivisorANGLE(positionLocation, 0)
+
+  gl.enableVertexAttribArray(colorLocation)
+  gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 24, 12)
+  if (ext) ext.vertexAttribDivisorANGLE(colorLocation, 0)
+
+  // Bind instance attributes (e.g., matrix columns)
+  for (const attr of instanceAttributes) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, attr.buffer.buffer)
+    for (let i = 0; i < attr.numComponents / 4; i++) {
+      // Assuming Mat4 or Vec4s. If float, stride needs adjustment.
+      // For this specific use case (Matrix4), we bind 4 vec4s.
+      const loc = attr.location + i
+      gl.enableVertexAttribArray(loc)
+      const stride = attr.numComponents * 4 // 4 bytes per float
+      const offset = i * 16 // 4 floats * 4 bytes
+      gl.vertexAttribPointer(loc, 4, gl.FLOAT, false, stride, offset)
+      if (ext) ext.vertexAttribDivisorANGLE(loc, 1)
+    }
+  }
+}
