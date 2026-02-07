@@ -38,9 +38,17 @@ void main() {
 `
 
 
-function drawSegmentBand(drawMesh, modelMatrix, width, depth, y, colorMesh, x, z) {
+// [v6.7] 세그먼트 회전 추가: 곡률에 맞춰 Y축 회전하여 틈새 제거
+function drawSegmentBand(drawMesh, modelMatrix, width, depth, y, colorMesh, x, z, angle = 0) {
   mat4.identity(modelMatrix)
   mat4.translate(modelMatrix, modelMatrix, [x, y, z])
+  // 아케이드 스타일: 단순 Y축 회전으로 연결감 확보
+  if (Math.abs(angle) > 0.001) {
+    mat4.rotateY(modelMatrix, modelMatrix, angle)
+  }
+  // [v7.7] Scale Tuning: 틈새 방지 + Z-fighting 방지 (Layering 사용 전제)
+  mat4.scale(modelMatrix, modelMatrix, [1.02, 1, 1.05])
+
   drawMesh(colorMesh, modelMatrix)
 }
 
@@ -124,11 +132,13 @@ export function createSceneRenderer(gl, reportError) {
 
   const roadMesh = createMesh(gl, createPlaneGeometry(roadWidth, roadDepth, 0, [0.2, 0.21, 0.23]))
   const shoulderMesh = createMesh(gl, createPlaneGeometry(shoulderWidth, roadDepth, 0, [0.84, 0.81, 0.72]))
-  const rumbleRedMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.01, [0.88, 0.18, 0.18]))
-  const rumbleWhiteMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.01, [0.93, 0.93, 0.9]))
+  // [v7.8] Increase Decal Y-offset (0.01 -> 0.08) to fix Z-fighting flicker
+  const rumbleRedMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.08, [0.88, 0.18, 0.18]))
+  const rumbleWhiteMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.08, [0.93, 0.93, 0.9]))
   const grassMesh = createMesh(gl, createPlaneGeometry(grassWidth, roadDepth, 0, [0.17, 0.47, 0.2]))
-  const groundMesh = createMesh(gl, createPlaneGeometry(160, 110, -0.02, [0.14, 0.39, 0.17]))
-  const laneDashMesh = createMesh(gl, createPlaneGeometry(0.25, 2.4, 0.01, [0.95, 0.95, 0.9]))
+  // [v6.7] Z-fighting 방지를 위해 Ground 높이 하향 조정 (-0.02 -> -0.1)
+  const groundMesh = createMesh(gl, createPlaneGeometry(160, 110, -0.1, [0.14, 0.39, 0.17]))
+  const laneDashMesh = createMesh(gl, createPlaneGeometry(0.25, 2.4, 0.08, [0.95, 0.95, 0.9]))
 
   // Improved Assets
   const treeTrunkMesh = createMesh(gl, createCylinderGeometry(0.3, 0.4, 1.2, 6, [0.3, 0.2, 0.1]))
@@ -272,8 +282,8 @@ export function createSceneRenderer(gl, reportError) {
 
   function draw(state) {
     const aspect = gl.canvas.width / gl.canvas.height
-    // FOV를 75도로 높여 아케이드 속도감 강화
-    mat4.perspective(projectionMatrix, (75 * Math.PI) / 180, aspect, 0.1, 400)
+    // [v7.7] FOV 60 -> 45 (체감 속도 과장 축소, 현실적인 묵직함)
+    mat4.perspective(projectionMatrix, (45 * Math.PI) / 180, aspect, 0.1, 400)
 
     gl.clearColor(0.36, 0.67, 0.93, 1)
 
@@ -288,7 +298,8 @@ export function createSceneRenderer(gl, reportError) {
     // 조향 입력에 따른 카메라 시선 변화
     const steeringLook = (state.steeringValue || 0) * 10.0
     const desiredLookX = roadLook + steeringLook
-    smoothLookX += (desiredLookX - smoothLookX) * 0.05
+    // [v6.8] 카메라 보간 속도 미세 조정 (0.05 -> 0.08: 반응성 향상으로 덜 밀리게 함)
+    smoothLookX += (desiredLookX - smoothLookX) * 0.08
 
     // 3인칭 카메라 설정: 차량 중심은 항상 0 (laneOffset으로 풍경만 이동)
     const cameraX = 0
@@ -306,8 +317,14 @@ export function createSceneRenderer(gl, reportError) {
     // 전 세계를 플레이어 위치의 반대 방향으로 밀어 플레이어를 중앙(laneOffset)에 배치
     const worldShiftX = -laneOffset
 
+    // [v6.7] Ground Rendering: 플레이어 위치(0)를 중심으로 무한 배경처럼 보이게 함
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [0, -0.05, 0])
+    // Z축으로 플레이어와 함께 이동하는 것처럼 보이게 하려면?
+    // 아니면 그냥 거대한 판을 깔아두고 텍스처만 이동? 
+    // 여기서는 단순하게 플레이어 주변에 항상 있도록 Z 위치를 조정.
+    // Road samples go from z=14 to z=-...
+    // Center ground at z=-20 roughly?
+    mat4.translate(modelMatrix, modelMatrix, [worldShiftX, -0.05, -10])
     drawMesh(groundMesh, modelMatrix)
 
     for (let i = 0; i < state.roadSamples.length; i += 1) {
@@ -320,17 +337,30 @@ export function createSceneRenderer(gl, reportError) {
       const x = smoothCenterX + worldShiftX
       const z = sample.z
 
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, roadMesh, x, z)
+      // [v6.7] Calculate Angle for smooth connection
+      // 다음 세그먼트와의 X 차이를 이용해 회전각 계산
+      // next.centerX는 상대좌표가 아닐 수 있으므로 주의. smoothCenterX 간의 차이를 이용
+      const nextSmoothX = ((sample.centerX * 0.27) + (next.centerX * 0.46) + (state.roadSamples[Math.min(i + 3, state.roadSamples.length - 1)].centerX * 0.27)) + worldShiftX
+      const dx = nextSmoothX - x
+      const dz = -12.0 // SEGMENT_LENGTH? No, segment z difference is? 
+      // i goes -BACK to VISIBLE. z = 14 - i * SEGMENT_LENGTH.
+      // So next i has smaller z. z gap is -SEGMENT_LENGTH.
+      const segLen = 9 // Approximate segment length check
+      const angle = Math.atan2(dx, -segLen)
+
+      // [v7.8] Remove layerY hack (caused gaps). Relies on mesh Y-offset for decimals.
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, roadMesh, x, z, angle)
+
       const rumbleMesh = Math.floor(sample.segmentIndex / 4) % 2 === 0 ? rumbleRedMesh : rumbleWhiteMesh
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x - rumbleOffset, z)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x + rumbleOffset, z)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x - shoulderOffset, z)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x + shoulderOffset, z)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x - grassOffset, z)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x + grassOffset, z)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x - rumbleOffset, z, angle)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x + rumbleOffset, z, angle)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x - shoulderOffset, z, angle)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x + shoulderOffset, z, angle)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x - grassOffset, z, angle)
+      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x + grassOffset, z, angle)
 
       if (sample.segmentIndex % 5 !== 0) {
-        drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, laneDashMesh, x, z)
+        drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, laneDashMesh, x, z, angle)
       }
     }
 

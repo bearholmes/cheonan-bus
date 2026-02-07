@@ -120,55 +120,94 @@ function generateCurveZones(seed) {
 // The previous step messed up `buildRoadSamples` optimization.
 // Let's restore/keep the standard `buildRoadSamples`.
 
-function buildRoadSamples(distance) {
-  const samples = []
-  let centerX = 0 // Simplify track X integration for now to avoid drifting error without persistent state
-  // To do continuous variation properly without full integration, we usually use a functional approach or cached segments.
-  // For this prototype, functional approximation:
+// [v7.2] Pre-generated Track for Stability
+function generateTrack(runDistance = 15000) {
+  const track = []
+  let x = 0
+  let dx = 0
+  const totalSegments = Math.ceil(runDistance / SEGMENT_LENGTH) + VISIBLE_SEGMENTS + 50
 
+  for (let i = 0; i < totalSegments; i++) {
+    const d = i * SEGMENT_LENGTH
+    const c = sampleCurve(d)
+    dx += c
+    x += dx * 0.18
+    track.push({
+      worldZ: d,
+      centerX: x,
+      curve: c,
+      segmentIndex: i
+    })
+  }
+  return track
+}
+
+// [v6.9] GC Optimization: Reuse objects
+const samplePool = Array.from({ length: VISIBLE_SEGMENTS + BACK_VISIBLE_SEGMENTS + 10 }, () => ({
+  i: 0, centerX: 0, curve: 0, z: 0, worldDistance: 0, segmentIndex: 0
+}))
+
+export function buildRoadSamples(distance, state) {
   const scrollOffset = ((distance % SEGMENT_LENGTH) + SEGMENT_LENGTH) % SEGMENT_LENGTH
 
-  // We need to integrate curve from "Something". 
-  // In `state.trackX` we store the accumulated world X.
-  // Relative to `state.playerX`, but for rendering we need World Coordinates.
+  // Use pool or state.roadSamples if available
+  const samples = state && state.roadSamples ? state.roadSamples : []
 
-  // Let's just generate local curvature for visual bending.
-  // The previous implementation used a local accumulator `smoothCenterX`.
-  // It works for "infinite straight road with curves", but not for a persistent map unless we integrate from 0.
-  // But since the user wants a seeded map, let's stick to the visual illusion approach which is standard for pseudo-3D/outrun.
+  // Ensure capacity logic (simple fixed size for arcade feel)
+  if (samples.length === 0) {
+    for (let i = 0; i < 40; i++) samples.push({ ...samplePool[i] })
+  }
 
   let x = 0
   let dx = 0
+  let index = 0
+
   for (let i = -BACK_VISIBLE_SEGMENTS; i < VISIBLE_SEGMENTS; i++) {
     const d = distance + i * SEGMENT_LENGTH
     const c = sampleCurve(d)
     dx += c
-    // Track curvature accumulation: consistent scaling for the render bending
     x += dx * 0.18
 
-    samples.push({
-      i,
-      centerX: x,
-      curve: c,
-      z: 14 + scrollOffset - i * SEGMENT_LENGTH,
-      worldDistance: d,
-      segmentIndex: Math.floor(d / SEGMENT_LENGTH)
-    })
+    // Expand if needed (shouldn't happen often with fixed view)
+    if (!samples[index]) samples[index] = { ...samplePool[0] }
+
+    const s = samples[index]
+    s.i = i
+    s.centerX = x
+    s.curve = c
+    s.z = 14 + scrollOffset - i * SEGMENT_LENGTH
+    s.worldDistance = d
+    s.segmentIndex = Math.floor(d / SEGMENT_LENGTH)
+
+    index++
   }
+
+  // Truncate
+  if (samples.length > index) samples.length = index
+
+  const busIdx = BACK_VISIBLE_SEGMENTS
+  const offset = samples[busIdx] ? samples[busIdx].centerX : 0
+
+  for (let k = 0; k < index; k++) {
+    samples[k].centerX -= offset
+  }
+
   return samples
 }
 
-function buildProps(samples) {
-  const props = []
+const propPool = Array.from({ length: 150 }, () => ({
+  kind: 'tree', x: 0, z: 0, scale: 1
+}))
+
+export function buildProps(samples, state) {
+  // Reuse state.props array
+  const props = state && state.props ? state.props : []
+  let propIdx = 0
+
   for (const s of samples) {
-    if (s.segmentIndex % 2 !== 0) continue // Skip every other segment to reduce clutter
+    if (s.segmentIndex % 2 !== 0) continue
 
     const dist = s.worldDistance
-    // Biome Logic
-    // 0-1200: Suburbs (Trees mixed with some Towers)
-    // 1200-2400: City (Dense Towers)
-    // 2400+: Nature (Trees)
-
     let biome = 'suburb'
     if (dist > 1200 && dist < 2400) biome = 'city'
     if (dist >= 2400) biome = 'nature'
@@ -181,7 +220,7 @@ function buildProps(samples) {
 
     if (biome === 'city') {
       density = 0.6
-      if (h2 > 0.3) type = 'tower' // Mostly towers
+      if (h2 > 0.3) type = 'tower'
       else type = 'sign'
     } else if (biome === 'suburb') {
       density = 0.4
@@ -189,7 +228,6 @@ function buildProps(samples) {
       else if (h2 > 0.7) type = 'sign'
       else type = 'tree'
     } else {
-      // Nature
       density = 0.5
       type = 'tree'
     }
@@ -197,18 +235,27 @@ function buildProps(samples) {
     if (h < density) {
       const side = hash01(s.segmentIndex + 7) > 0.5 ? 1 : -1
       const offset = 14 + hash01(s.segmentIndex + 1) * 10
-      props.push({
-        kind: type,
-        x: s.centerX + side * offset,
-        z: s.z,
-        scale: 1.0 + hash01(s.segmentIndex * 9) * 0.5 + (type === 'tower' ? 1.0 : 0) // Taller towers
-      })
+
+      // Alloc / Reuse
+      if (!props[propIdx]) props[propIdx] = { ...propPool[0] }
+
+      const p = props[propIdx]
+      p.kind = type
+      p.x = s.centerX + side * offset
+      p.z = s.z
+      p.scale = 1.0 + hash01(s.segmentIndex * 9) * 0.5 + (type === 'tower' ? 1.0 : 0)
+
+      propIdx++
     }
   }
+
+  // Truncate logic to hide unused props
+  if (props.length > propIdx) props.length = propIdx
+
   return props
 }
 
-function buildStopMarker(state) {
+export function buildStopMarker(state) {
   // Similar to previous
   if (!state.roadSamples) return null
   let best = null
@@ -244,6 +291,16 @@ export function createInitialState() {
     distance: 0,
     trackX: 0,
 
+    // Interpolation (Prev State)
+    prevPlayerX: 0,
+    prevLateralVel: 0,
+    prevSteeringValue: 0,
+    prevCarYaw: 0,
+    prevCarRoll: 0,
+    prevPitch: 0,
+    prevDistance: 0,
+    prevTrackX: 0,
+
     // Game
     routeSeed: 1,
     nextStopDistance: firstStopGap,
@@ -266,6 +323,7 @@ export function createInitialState() {
     roadSamples: [],
     props: [],
     stopMarker: null,
+    track: generateTrack(15000), // Generate fixed track
 
     hudLine: 'Space로 메뉴/도어 조작',
     stamp: '대기 중',
@@ -274,8 +332,8 @@ export function createInitialState() {
     missionTime: INITIAL_MISSION_TIME
   }
 
-  state.roadSamples = buildRoadSamples(0)
-  state.props = buildProps(state.roadSamples)
+  state.roadSamples = buildRoadSamples(0, state)
+  state.props = buildProps(state.roadSamples, state)
   return state
 }
 
@@ -318,6 +376,16 @@ export function updateState(state, input, dt) {
     // Menu logic
     return
   }
+
+  // [v7.7] State Backup for Interpolation
+  state.prevPlayerX = state.playerX
+  state.prevLateralVel = state.lateralVel
+  state.prevSteeringValue = state.steeringValue
+  state.prevCarYaw = state.carYaw
+  state.prevCarRoll = state.carRoll
+  state.prevPitch = state.pitch
+  state.prevDistance = state.distance
+  state.prevTrackX = state.trackX
 
   // Physics
   const step = Math.min(dt, 0.1)
@@ -428,7 +496,7 @@ export function updateState(state, input, dt) {
 
   // 차체 Yaw: 진행 방향 + 도로 곡률
   // 후진 시에는 headingAngle을 반대로 적용해야 엉덩이가 진행 방향으로 돌아가는 느낌
-  state.carYaw = -(headingAngle * 1.5 * dir + (currentCurve * 2.5))
+  state.carYaw = -(headingAngle * 2.0 * dir) // [v6.6] Auto-Yaw 제거: 오직 물리적 이동 방향만 반영
   state.carRoll = -state.steeringValue * state.speed * 0.005
 
   // Pitch & PrevSpeed
@@ -480,7 +548,6 @@ export function updateState(state, input, dt) {
     }
   }
 
-  // Miss logic
   if (distToStop < -STOP_MISS_DISTANCE) {
     state.stopIndex++
     state.nextStopDistance += 400
@@ -488,10 +555,7 @@ export function updateState(state, input, dt) {
     pushToast(state, '정류장 놓침!', 'bad')
   }
 
-  // Render Gen
-  state.roadSamples = buildRoadSamples(state.distance)
-  state.props = buildProps(state.roadSamples)
-  state.stopMarker = buildStopMarker(state)
+  // Render Generation handled in Game Loop with Interpolation
 }
 
 export function renderGameToText(state) {
