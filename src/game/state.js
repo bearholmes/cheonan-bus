@@ -143,9 +143,8 @@ function buildRoadSamples(distance) {
     const d = distance + i * SEGMENT_LENGTH
     const c = sampleCurve(d)
     dx += c
-    // Reduce curvature accumulation drastically to make curves gentle and drivable
-    // 0.1 was too sharp for the steering physics. 0.015 should be gentle.
-    x += dx * 0.015
+    // Track curvature accumulation: consistent scaling for the render bending
+    x += dx * 0.18
 
     samples.push({
       i,
@@ -271,7 +270,8 @@ export function createInitialState() {
     hudLine: 'Space로 메뉴/도어 조작',
     stamp: '대기 중',
     toastMessage: '',
-    toastSeq: 0
+    toastSeq: 0,
+    missionTime: INITIAL_MISSION_TIME
   }
 
   state.roadSamples = buildRoadSamples(0)
@@ -382,9 +382,17 @@ export function updateState(state, input, dt) {
     }
   }
 
+  // 마찰 및 자연 감속 로직 개선
   if (!accel && !brake && !reverse) {
-    targetSpeed *= 0.98 // Friction
-    if (Math.abs(targetSpeed) < 0.05) targetSpeed = 0
+    // 단순 곱셈이 아닌 상수를 뺀 가속도 기반 감속
+    const decelAmount = NATURAL_DECEL * step
+    if (state.speed > 0) {
+      targetSpeed -= decelAmount
+      if (targetSpeed < 0) targetSpeed = 0
+    } else if (state.speed < 0) {
+      targetSpeed += decelAmount
+      if (targetSpeed > 0) targetSpeed = 0
+    }
   }
 
   // Apply changes directly 
@@ -411,21 +419,38 @@ export function updateState(state, input, dt) {
     }
   }
 
-  // Steering
+  // 조향 로직 전면 재구조화
   const steerInput = (input.right ? 1 : 0) - (input.left ? 1 : 0)
-  // Increase interpolation speed for snappier steering
-  state.steeringValue += (steerInput - state.steeringValue) * step * 6.0
+  // 조향 반응 속도를 아케이드 스타일로 매우 빠르게 설정
+  state.steeringValue += (steerInput - state.steeringValue) * step * 15.0
 
-  // Increase coefficient: 0.08 -> 0.35 for realistic lane change speed (approx 10m/s at max speed)
-  // Also enable turning at lower speeds smoothly
-  const turnSpeedFactor = Math.abs(state.speed) > 2.0 ? state.speed : (Math.abs(state.speed) > 0.1 ? Math.sign(state.speed) * 2.0 : 0)
+  // OutRun 스타일 아케이드 물리:
+  const currentCurve = sampleCurve(state.distance)
 
-  state.lateralVel = state.steeringValue * turnSpeedFactor * 0.35
+  // 1. 도로 추종 (Road Following): 도로가 굽어지는 만큼 차도 자연스럽게 따라감
+  const curveMove = currentCurve * state.speed * step * 0.18
+  state.trackX += curveMove
+  state.playerX += curveMove
+
+  // 2. 원심력 (Centrifugal Force): 고속 커브에서만 살짝 밀리는 느낌 부여
+  const centrifugal = currentCurve * state.speed * step * CENTRIFUGAL * 0.1
+  state.playerX -= centrifugal
+
+  // 3. 아케이드 조향 (Lateral Movement)
+  // 속도가 0이면 옆으로 이동하지 않음.
+  const steerEffect = Math.abs(state.speed) < 1.0 ? 0 : (20.0 + Math.abs(state.speed) * 0.6)
+  state.lateralVel = state.steeringValue * steerEffect
   state.playerX += state.lateralVel * step
 
-  // Car Body Physics
-  state.carYaw = -state.steeringValue * 0.5 // Much stronger body rotation (visual only)
-  state.carRoll = -state.steeringValue * state.speed * 0.006 // Stronger roll (leaning)
+  // 4. 도로 경계 제한
+  const maxOffRoad = ROAD_HALF_WIDTH * 1.5
+  state.playerX = clamp(state.playerX, state.trackX - maxOffRoad, state.trackX + maxOffRoad)
+
+  // 5. 차체 회전 (Yaw) - '게걸음' 방지 최적화
+  // WebGL Y축 회전 방향에 맞춰 부호 반전 (-)
+  const angleFromVelocity = Math.atan2(state.lateralVel, Math.abs(state.speed) + 1.0)
+  state.carYaw = -(angleFromVelocity * 1.2 + (currentCurve * 1.5))
+  state.carRoll = -state.steeringValue * state.speed * 0.006
   // Pitch from accel
   const deltaSpeed = state.speed - (state.prevSpeed || 0)
   state.pitch = -deltaSpeed * 0.05

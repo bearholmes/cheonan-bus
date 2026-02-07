@@ -158,7 +158,8 @@ export function createSceneRenderer(gl, reportError) {
   const busStripe = createMesh(gl, createCubeGeometry(3.06, 0.24, 6.85, [0.95, 0.46, 0.18]))
   const busBumper = createMesh(gl, createCubeGeometry(2.86, 0.28, 0.34, [0.14, 0.16, 0.2]))
   const busRoutePlate = createMesh(gl, createCubeGeometry(1.72, 0.3, 0.08, [0.98, 0.63, 0.14]))
-  const wheel = createMesh(gl, createCubeGeometry(0.46, 0.46, 0.84, [0.06, 0.06, 0.07]))
+  // 정교한 실린더 바퀴: 반지름 0.45, 두께 0.45, 16분할
+  const wheel = createMesh(gl, createCylinderGeometry(0.45, 0.45, 0.45, 16, [0.06, 0.06, 0.07]))
 
   // Create batches for props
   const treeTrunkBatch = createBatch(treeTrunkMesh)
@@ -287,9 +288,10 @@ export function createSceneRenderer(gl, reportError) {
     smoothCamX += (desiredCamX - smoothCamX) * 0.04
     smoothLookX += (desiredLookX - smoothLookX) * 0.05 // Faster reaction
     const cameraX = Math.max(-0.75, Math.min(0.75, smoothCamX))
-
-    const eye = vec3.fromValues(cameraX, 2.86, 17.4)
-    const target = vec3.fromValues(cameraX + smoothLookX, 0.78, -21.5)
+    // OutRun style 3rd person camera:
+    // cameraX is the lateral shift, eye is behind the bus
+    const eye = vec3.fromValues(cameraX, 4.5, 24.0)
+    const target = vec3.fromValues(cameraX + smoothLookX, 1.2, -30.0)
     const up = vec3.fromValues(0, 1, 0)
     mat4.lookAt(viewMatrix, eye, target, up)
     mat4.multiply(viewProjectionMatrix, projectionMatrix, viewMatrix)
@@ -298,10 +300,7 @@ export function createSceneRenderer(gl, reportError) {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
     mat4.identity(modelMatrix)
-    // 1st Person View: Move camera UP and FORWARD.
-    // Bus center is ~8.1z. Move camera to ~6.0z to be at windshield/bumper.
-    // Height ~2.0y.
-    mat4.translate(modelMatrix, modelMatrix, [cameraX * 0.22, -1.8, -15]) // Adjusted for 1st person feel
+    mat4.translate(modelMatrix, modelMatrix, [0, -0.05, 0])
     drawMesh(groundMesh, modelMatrix)
 
     // Key Fix: Move the world opposite to player to simulate lateral movement
@@ -349,90 +348,52 @@ export function createSceneRenderer(gl, reportError) {
 
     drawStopMarker(state.stopMarker, worldShiftX, state.nextStopDistance - state.distance)
 
-    // Bus is relatively centered on screen, maybe slight lean
-    // Since world moved -laneOffset, bus should be around 0
+    // Bus Rendering (v3: Hierarchical / Parent-Child)
     const busX = 0
     const busZ = 8.1
     const carYaw = state.carYaw * 0.45
     const carRoll = state.carRoll * 0.16
 
-    // Totally remove bus rendering to clear up "black blob" confusion
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 0.58, busZ])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busBody, modelMatrix)
+    // 1. Parent Matrix (Bus Body Base)
+    const busBaseMatrix = mat4.create()
+    mat4.identity(busBaseMatrix)
+    mat4.translate(busBaseMatrix, busBaseMatrix, [busX, 0.58, busZ])
+    mat4.rotateY(busBaseMatrix, busBaseMatrix, carYaw)
+    mat4.rotateZ(busBaseMatrix, busBaseMatrix, carRoll)
 
-    // Restore Main Body - ACTUALLY HIDE IT for First Person View
-    // User response suggests the model looks bad ("green box").
-    // Let's hide the bus entirely and just show the road/cockpit view.
+    // Draw Body using Base Matrix
+    drawMesh(busBody, busBaseMatrix)
 
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 0.58, busZ])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busBody, modelMatrix)
+    // Helper: Draw component relative to bus base
+    function drawPart(mesh, offset, scale = [1, 1, 1], rotate = [0, 0, 0]) {
+      const partMatrix = mat4.create()
+      mat4.copy(partMatrix, busBaseMatrix)
+      mat4.translate(partMatrix, partMatrix, offset)
+      if (rotate[0]) mat4.rotateX(partMatrix, partMatrix, rotate[0])
+      if (rotate[1]) mat4.rotateY(partMatrix, partMatrix, rotate[1])
+      if (rotate[2]) mat4.rotateZ(partMatrix, partMatrix, rotate[2])
+      mat4.scale(partMatrix, partMatrix, scale)
+      drawMesh(mesh, partMatrix)
+    }
 
-    // Remove distracting "hoof" shape (bus front cap) and upper body that blocks view
-    // Only draw the main body if it's not blocking, or remove it too if necessary.
-    // Let's remove front cap and upper for clear view.
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 1.45, busZ + 0.1])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busUpper, modelMatrix)
+    // 2. Child Components (Body Parts)
+    drawPart(busUpper, [0, 0.87, 0.1])
+    drawPart(busRoof, [0, 1.44, 0.05])
+    drawPart(busWindshield, [0, 0.74, -3.78])
+    drawPart(busBumper, [0, -0.08, -3.72])
 
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 1.32, busZ - 3.78])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busWindshield, modelMatrix)
+    // 3. Child Components (Wheels)
+    const wheelY = -0.13 // 차체 바닥 기준 상대 높이
+    for (const side of [-1, 1]) {
+      // 앞바퀴 (단륜, 조향 시 회전)
+      const frontSteer = state.steeringValue * 0.65
+      drawPart(wheel, [side * 1.45, wheelY, -2.4], [1, 1, 1], [0, frontSteer, Math.PI / 2])
 
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 0.98, busZ])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busStripe, modelMatrix)
-
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 2.02, busZ + 0.05])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busRoof, modelMatrix)
-
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 0.5, busZ - 3.72])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busBumper, modelMatrix)
-
-    // for (const side of [-1, 1]) {
-    //   for (const wz of [-2.2, -0.7, 0.8, 2.1]) {
-    //     mat4.identity(modelMatrix)
-    //     mat4.translate(modelMatrix, modelMatrix, [busX, 1.35, busZ])
-    //     mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    //     mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    //     mat4.translate(modelMatrix, modelMatrix, [side * 1.56, 0, wz])
-    //     drawMesh(busWindowPane, modelMatrix)
-    //   }
-    // }
-
-    // for (const side of [-1, 1]) {
-    //   for (const wz of [-2.95, -1.45, 0.05, 1.55, 2.95]) {
-    //     mat4.identity(modelMatrix)
-    //     mat4.translate(modelMatrix, modelMatrix, [busX, 1.35, busZ])
-    //     mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    //     mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    //     mat4.translate(modelMatrix, modelMatrix, [side * 1.56, 0, wz])
-    //     drawMesh(busWindowDivider, modelMatrix)
-    //   }
-    // }
-
-    // mat4.identity(modelMatrix)
-    // mat4.translate(modelMatrix, modelMatrix, [busX, 1.63, busZ - 3.68])
-    // mat4.rotateY(modelMatrix, modelMatrix, carYaw)
-    // mat4.rotateZ(modelMatrix, modelMatrix, carRoll)
-    // drawMesh(busRoutePlate, modelMatrix)
+      // 뒷바퀴 (복륜/더블 타이어)
+      for (const dualPos of [-0.22, 0.22]) {
+        drawPart(wheel, [side * 1.3 + (side * dualPos), wheelY, 2.2], [1, 1, 1], [0, 0, Math.PI / 2])
+      }
+    }
 
     const drawErrors = drainGLErrors(gl)
     if (drawErrors.length > 0) {
