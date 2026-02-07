@@ -5,9 +5,9 @@ const REVERSE_ACCEL = 30
 const BRAKE = 96
 const DRAG = 9
 const OFFROAD_DRAG = 2
-const STEER_RATE = 4.0 // Slower direct steer for inertia
-const NATURAL_DECEL = 7.8
-const CENTRIFUGAL = 0.32
+const STEER_RATE = 4.0
+const NATURAL_DECEL = 12.0 // 좀 더 강한 자연 감속
+const CENTRIFUGAL = 0.25 // 원심력 하향
 const ROAD_HALF_WIDTH = 11.6
 const STOP_CAPTURE_DISTANCE = 45 // Expanded from 24
 const STOP_MISS_DISTANCE = 150 // Allow reversing up to 150m
@@ -292,10 +292,10 @@ export function startRun(state) {
   state.missedStops = 0
   state.passengers = 0
   state.seats.fill(false)
-  state.doorOpen = false
-  state.doorAnim = 0
-  state.playerX = 0
-  state.lateralVel = 0
+  state.mode = 'running'
+  state.distance = 0
+  state.speed = 0
+  state.doorOpen = false // 출발 시에는 문을 닫은 상태로 시작하여 즉시 가속 가능하게 함
   state.steeringValue = 0
   state.carYaw = 0
   state.carRoll = 0
@@ -336,72 +336,52 @@ export function updateState(state, input, dt) {
 
   state.doorAnim += ((state.doorOpen ? 1 : 0) - state.doorAnim) * step * 5
 
-  // Drive Logic - Split Brake and Reverse
+  // 1. 가속 및 감속 로직 (v6.4: 확실한 반응성)
   const accel = input.accelerate && !state.doorOpen
   const brake = input.brake
-  const reverse = input.reverse && !state.doorOpen // dedicated reverse key
+  const reverse = input.reverse && !state.doorOpen
 
-  if (state.doorOpen && (accel || reverse)) {
-    pushToast(state, '문이 열려있습니다!', 'alert')
+  if (state.doorOpen && (input.accelerate || input.reverse)) {
+    if (Math.round(state.distance * 10) % 10 === 0) {
+      pushToast(state, '문을 닫아야 출발할 수 있습니다 (Space)', 'alert')
+    }
   }
 
-  // Speed Physics with Brake/Reverse Logic
   let targetSpeed = state.speed
-
   if (accel) {
-    if (state.speed < -0.1) {
-      // Braking from reverse
-      targetSpeed += BRAKE * step
+    targetSpeed += ACCEL * step
+  } else if (reverse) {
+    targetSpeed -= REVERSE_ACCEL * step
+  }
+
+  // 브레이크 로직
+  if (brake) {
+    const brakeForce = BRAKE * step
+    if (state.speed > 0.1) {
+      targetSpeed -= brakeForce
+      if (targetSpeed < 0) targetSpeed = 0
+    } else if (state.speed < -0.1) {
+      targetSpeed += brakeForce
       if (targetSpeed > 0) targetSpeed = 0
     } else {
-      // Accelerating forward
-      targetSpeed += ACCEL * step
-    }
-  } else if (reverse) {
-    // Reverse Logic
-    if (state.speed > 0.1) {
-      // Braking from forward should be S, but if R is pressed?
-      // Let's assume R means "want to go back".
-      targetSpeed -= BRAKE * step
-    } else {
-      // Actually reversing
-      targetSpeed -= REVERSE_ACCEL * step
+      targetSpeed = 0
     }
   }
 
-  // S Key is strictly Brake/Stop now
-  if (brake) {
-    if (state.speed > 0.1) {
-      targetSpeed -= BRAKE * step
-      if (targetSpeed < 0) targetSpeed = 0 // Snap to 0
-    } else if (state.speed < -0.1) {
-      targetSpeed += BRAKE * step
-      if (targetSpeed > 0) targetSpeed = 0 // Snap to 0
-    } else {
-      targetSpeed = 0 // Hold 0
-    }
-  }
-
-  // 마찰 및 자연 감속 로직 개선
+  // 자연 감속
   if (!accel && !brake && !reverse) {
-    // 단순 곱셈이 아닌 상수를 뺀 가속도 기반 감속
-    const decelAmount = NATURAL_DECEL * step
+    const drag = NATURAL_DECEL * step
     if (state.speed > 0) {
-      targetSpeed -= decelAmount
+      targetSpeed -= drag
       if (targetSpeed < 0) targetSpeed = 0
     } else if (state.speed < 0) {
-      targetSpeed += decelAmount
+      targetSpeed += drag
       if (targetSpeed > 0) targetSpeed = 0
     }
   }
 
-  // Apply changes directly 
-  state.speed = targetSpeed
-
-  // Force strict 0 for door logic comfort
+  state.speed = clamp(targetSpeed, -MAX_REVERSE_SPEED, MAX_SPEED)
   if (Math.abs(state.speed) < 0.05) state.speed = 0
-
-  state.speed = clamp(state.speed, -MAX_REVERSE_SPEED, MAX_SPEED)
 
   // Door Logic (Moved after speed update to use latest speed)
   // Check input.command again just in case, or reuse variable?
@@ -419,39 +399,39 @@ export function updateState(state, input, dt) {
     }
   }
 
-  // 조향 로직 전면 재구조화
+  // 2. 조향 및 상대 좌표 물리 (v6.4 Final)
   const steerInput = (input.right ? 1 : 0) - (input.left ? 1 : 0)
-  // 조향 반응 속도를 아케이드 스타일로 매우 빠르게 설정
-  state.steeringValue += (steerInput - state.steeringValue) * step * 15.0
+  state.steeringValue += (steerInput - state.steeringValue) * step * 12.0
 
-  // OutRun 스타일 아케이드 물리:
   const currentCurve = sampleCurve(state.distance)
 
-  // 1. 도로 추종 (Road Following): 도로가 굽어지는 만큼 차도 자연스럽게 따라감
-  const curveMove = currentCurve * state.speed * step * 0.18
-  state.trackX += curveMove
-  state.playerX += curveMove
+  // 조향력 강화: 커브에서도 충분히 안쪽으로 파고들 수 있게 함
+  const isMoving = Math.abs(state.speed) > 0.05
+  const steerPower = isMoving ? (38.0 + Math.abs(state.speed) * 0.45) : 0
 
-  // 2. 원심력 (Centrifugal Force): 고속 커브에서만 살짝 밀리는 느낌 부여
-  const centrifugal = currentCurve * state.speed * step * CENTRIFUGAL * 0.1
-  state.playerX -= centrifugal
-
-  // 3. 아케이드 조향 (Lateral Movement)
-  // 속도가 0이면 옆으로 이동하지 않음.
-  const steerEffect = Math.abs(state.speed) < 1.0 ? 0 : (20.0 + Math.abs(state.speed) * 0.6)
-  state.lateralVel = state.steeringValue * steerEffect
+  state.lateralVel = state.steeringValue * steerPower
   state.playerX += state.lateralVel * step
 
-  // 4. 도로 경계 제한
-  const maxOffRoad = ROAD_HALF_WIDTH * 1.5
-  state.playerX = clamp(state.playerX, state.trackX - maxOffRoad, state.trackX + maxOffRoad)
+  // 원심력: 사용자가 조작하지 않을 때만 밀려나는 느낌을 주도록 하향 조정
+  const centrifugalForce = currentCurve * state.speed * step * CENTRIFUGAL * 1.5
+  state.playerX -= centrifugalForce
 
-  // 5. 차체 회전 (Yaw) - '게걸음' 방지 최적화
-  // WebGL Y축 회전 방향에 맞춰 부호 반전 (-)
-  const angleFromVelocity = Math.atan2(state.lateralVel, Math.abs(state.speed) + 1.0)
-  state.carYaw = -(angleFromVelocity * 1.2 + (currentCurve * 1.5))
-  state.carRoll = -state.steeringValue * state.speed * 0.006
-  // Pitch from accel
+  // 도로 경계 제한 (상대 좌표)
+  const maxOffRoad = ROAD_HALF_WIDTH * 1.8
+  state.playerX = clamp(state.playerX, -maxOffRoad, maxOffRoad)
+
+  // 3. 차체 회전 동기화 (Yaw & Roll)
+  const headingAngle = Math.atan2(state.lateralVel, Math.abs(state.speed) + 2.0)
+
+  // [v6.5] 후진 시 차체 회전 방향 반전 (User Feedback Fix)
+  const dir = state.speed < -0.1 ? -1 : 1
+
+  // 차체 Yaw: 진행 방향 + 도로 곡률
+  // 후진 시에는 headingAngle을 반대로 적용해야 엉덩이가 진행 방향으로 돌아가는 느낌
+  state.carYaw = -(headingAngle * 1.5 * dir + (currentCurve * 2.5))
+  state.carRoll = -state.steeringValue * state.speed * 0.005
+
+  // Pitch & PrevSpeed
   const deltaSpeed = state.speed - (state.prevSpeed || 0)
   state.pitch = -deltaSpeed * 0.05
   state.prevSpeed = state.speed

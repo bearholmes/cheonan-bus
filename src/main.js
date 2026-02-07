@@ -31,7 +31,7 @@ app.innerHTML = `
         <div class="hud-timer" data-role="timer">045 s</div>
       </div>
       <div class="hud-box">
-        <div class="hud-label">SPEED</div>
+        <div class="hud-label hidden">SPEED</div>
         <div class="hud-speed-row">
           <span class="hud-speed-value" data-role="speed">000</span>
           <span class="hud-speed-unit">km/h</span>

@@ -61,7 +61,7 @@ export function createHud(rootElement) {
   }
 
   function setNav(turn, stopDistance, urgency) {
-    const icon = turn === 'LEFT' ? 'LEFT' : turn === 'RIGHT' ? 'RIGHT' : 'HOLD'
+    const icon = turn === 'LEFT' ? 'LEFT' : turn === 'RIGHT' ? 'RIGHT' : ''
     const distance = Math.round(Math.max(0, stopDistance))
     if (turnElement) turnElement.textContent = icon
     if (navElement) navElement.textContent = `정류장까지 ${distance}m`

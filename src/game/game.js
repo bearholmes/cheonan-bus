@@ -89,7 +89,9 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     const stopDistance = state.nextStopDistance - state.distance
     const turn = state.curveNow > 0.18 ? 'RIGHT' : state.curveNow < -0.18 ? 'LEFT' : 'STRAIGHT'
     const urgency = stopDistance < 30 ? 'alert' : stopDistance < 90 ? 'approach' : 'normal'
-    hud.setNav(turn, stopDistance, urgency)
+
+    // 텍스트 네비게이션(TURN)은 시인성을 위해 생략하거나 간소화함
+    hud.setNav('', stopDistance, urgency)
     hud.setMessage(state.hudLine)
     hud.setStamp(`${state.stamp} · 구간 ${state.stageStopsDone}/${state.stageStopsTarget}`)
     if (state.toastSeq > lastToastSeq) {

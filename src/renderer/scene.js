@@ -272,39 +272,43 @@ export function createSceneRenderer(gl, reportError) {
 
   function draw(state) {
     const aspect = gl.canvas.width / gl.canvas.height
-    mat4.perspective(projectionMatrix, (69 * Math.PI) / 180, aspect, 0.1, 360)
+    // FOV를 75도로 높여 아케이드 속도감 강화
+    mat4.perspective(projectionMatrix, (75 * Math.PI) / 180, aspect, 0.1, 400)
 
     gl.clearColor(0.36, 0.67, 0.93, 1)
 
-    const laneOffset = (state.playerX ?? 0) - (state.trackX ?? 0)
+    // playerX는 이제 도로 중심으로부터의 상대적 오프셋입니다.
+    const laneOffset = state.playerX ?? 0
+
+    // 도로의 굽은 정도를 미리 파악하여 카메라가 커브를 미리 바라보게 함
     const nearSample = state.roadSamples?.[3]
-    const farSample = state.roadSamples?.[12]
-    const roadLook = nearSample && farSample ? (farSample.centerX - nearSample.centerX) * 0.08 : 0
-    // Look into the turn! 
-    // Uses steeringValue (immediate input) and carYaw (physics state)
-    const steeringLook = (state.steeringValue || 0) * 8.0
-    const desiredCamX = 0
+    const farSample = state.roadSamples?.[14]
+    const roadLook = nearSample && farSample ? (farSample.centerX - nearSample.centerX) * 0.12 : 0
+
+    // 조향 입력에 따른 카메라 시선 변화
+    const steeringLook = (state.steeringValue || 0) * 10.0
     const desiredLookX = roadLook + steeringLook
-    smoothCamX += (desiredCamX - smoothCamX) * 0.04
-    smoothLookX += (desiredLookX - smoothLookX) * 0.05 // Faster reaction
-    const cameraX = Math.max(-0.75, Math.min(0.75, smoothCamX))
-    // OutRun style 3rd person camera:
-    // cameraX is the lateral shift, eye is behind the bus
-    const eye = vec3.fromValues(cameraX, 4.5, 24.0)
-    const target = vec3.fromValues(cameraX + smoothLookX, 1.2, -30.0)
+    smoothLookX += (desiredLookX - smoothLookX) * 0.05
+
+    // 3인칭 카메라 설정: 차량 중심은 항상 0 (laneOffset으로 풍경만 이동)
+    const cameraX = 0
+    const eye = vec3.fromValues(cameraX, 5.0, 26.0)
+    const target = vec3.fromValues(cameraX + smoothLookX, 0.8, -35.0)
     const up = vec3.fromValues(0, 1, 0)
+
     mat4.lookAt(viewMatrix, eye, target, up)
     mat4.multiply(viewProjectionMatrix, projectionMatrix, viewMatrix)
 
+    // [v6.4] WebGL 상태 동기화 및 클리어
     gl.useProgram(program)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+    // 전 세계를 플레이어 위치의 반대 방향으로 밀어 플레이어를 중앙(laneOffset)에 배치
+    const worldShiftX = -laneOffset
 
     mat4.identity(modelMatrix)
     mat4.translate(modelMatrix, modelMatrix, [0, -0.05, 0])
     drawMesh(groundMesh, modelMatrix)
-
-    // Key Fix: Move the world opposite to player to simulate lateral movement
-    const worldShiftX = -laneOffset
 
     for (let i = 0; i < state.roadSamples.length; i += 1) {
       const sample = state.roadSamples[i]
@@ -343,8 +347,11 @@ export function createSceneRenderer(gl, reportError) {
     signPoleBatch.flush(viewProjectionMatrix)
     signBatch.flush(viewProjectionMatrix)
 
-    // Switch back to normal program for non-instanced objects
+    // 버스 및 UI 오브젝트 렌더링을 위해 다시 일반 셰이더 프로그램 활성화
     gl.useProgram(program)
+
+    // 유니폼 전송 재확인 (v6.4)
+    // ViewProjection은 drawMesh 내부에서 modelMatrix와 결합되어 u_mvp로 전송됨.
 
     drawStopMarker(state.stopMarker, worldShiftX, state.nextStopDistance - state.distance)
 
@@ -383,15 +390,16 @@ export function createSceneRenderer(gl, reportError) {
     drawPart(busBumper, [0, -0.08, -3.72])
 
     // 3. Child Components (Wheels)
-    const wheelY = -0.13 // 차체 바닥 기준 상대 높이
+    const wheelY = -0.15
     for (const side of [-1, 1]) {
       // 앞바퀴 (단륜, 조향 시 회전)
+      // [v6.5] Clipping 방지를 위해 바퀴 위치를 차체 바깥으로 조금 이동 (1.35 -> 1.45)
       const frontSteer = state.steeringValue * 0.65
       drawPart(wheel, [side * 1.45, wheelY, -2.4], [1, 1, 1], [0, frontSteer, Math.PI / 2])
 
       // 뒷바퀴 (복륜/더블 타이어)
-      for (const dualPos of [-0.22, 0.22]) {
-        drawPart(wheel, [side * 1.3 + (side * dualPos), wheelY, 2.2], [1, 1, 1], [0, 0, Math.PI / 2])
+      for (const dPos of [-0.2, 0.22]) {
+        drawPart(wheel, [side * 1.25 + (side * dPos), wheelY, 2.2], [1, 1, 1], [0, 0, Math.PI / 2])
       }
     }
 
