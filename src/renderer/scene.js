@@ -129,7 +129,7 @@ function isWorldVisible(worldX, worldZ, busX, busZ, forwardX, forwardZ, rightX, 
   const dz = worldZ - busZ
   const forward = dx * forwardX + dz * forwardZ
   const lateral = dx * rightX + dz * rightZ
-  return forward > -50 && forward < 320 && Math.abs(lateral) < 160
+  return forward > -90 && forward < 460 && Math.abs(lateral) < 240
 }
 
 export function createSceneRenderer(gl, reportError) {
@@ -204,7 +204,7 @@ export function createSceneRenderer(gl, reportError) {
   const shoulderOuter = rumbleOuter + shoulderWidth
   const grassOuter = shoulderOuter + grassWidth
 
-  const maxSegments = 120
+  const maxSegments = 600
   const ribbonRoad = createRibbon(gl, maxSegments, [0.2, 0.21, 0.23])
   const ribbonShoulderLeft = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
   const ribbonShoulderRight = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
@@ -213,7 +213,7 @@ export function createSceneRenderer(gl, reportError) {
   const ribbonRumbleLeft = createRibbon(gl, maxSegments, [0.72, 0.72, 0.72])
   const ribbonRumbleRight = createRibbon(gl, maxSegments, [0.72, 0.72, 0.72])
 
-  const groundMesh = createMesh(gl, createPlaneGeometry(220, 220, -0.25, [0.14, 0.39, 0.17]))
+  const groundMesh = createMesh(gl, createPlaneGeometry(520, 520, -0.25, [0.14, 0.39, 0.17]))
   const laneDashMesh = createMesh(gl, createPlaneGeometry(0.25, 2.4, 0.08, [0.95, 0.95, 0.9]))
 
   const treeTrunkMesh = createMesh(gl, createCylinderGeometry(0.3, 0.4, 1.2, 6, [0.3, 0.2, 0.1]))

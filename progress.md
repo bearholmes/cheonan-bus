@@ -17,3 +17,9 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Patch: fixed start-of-run rear road sampling by extrapolating negative-distance track points (removes bottom grass gap at start frame).
 - Patch: steering sign re-aligned again to user intent (`A/Left = left`, `D/Right = right`) after regression.
 - Patch: HUD stamp text now shows only stage progress (`구간 x/y`), removing stale `대기 중` prefix.
+- Patch: fixed route seed behavior to vary per run (startRun now consumes `routeSeed`, stores `activeRouteSeed`, then increments seed). Added `routeSeed` to `render_game_to_text` payload for verification.
+- Patch: reduced early straight bias (start straight 70m, lower straight chance/length) to avoid overly long straight openings.
+- Patch: expanded world visibility window + larger ground plane to reduce near-horizon/background pop-in.
+- Patch: flipped steering sign again to match user requirement explicitly (`A/Left => left yaw`, `D/Right => right yaw`) using `-input.steerAxis` in state integration.
+- Correction: steering sign was re-verified with a direct state simulation; final mapping is now `steerInput = input.steerAxis` (`left=-1`, `right=+1`) so left input yields negative yaw/worldX and right yields positive yaw/worldX.
+- Patch: steering input decoding is now forced from boolean keys only (`left && !right => -1`, `right && !left => +1`) to eliminate any axis-sign or stale-value inversion path.
