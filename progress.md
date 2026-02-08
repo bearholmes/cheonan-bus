@@ -10,3 +10,6 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Patch: fixed render-state interpolation handoff (game.js) to remove stutter from mismatched state references.
 - Patch: fixed heading sign/camera smoothing in scene.js to align steering direction with visible motion.
 - Patch: increased near prop spawn offset and skipped immediate forward segments in state.js to prevent bus-obstacle overlap in camera.
+- Patch: replaced direct lateral strafe steering with damped lateral dynamics (accel+damping+recentering) to remove crab-walk motion while preserving stop-game logic.
+- Patch: aligned chase camera with track forward vector and removed steer-driven look target drift that caused diagonal road/camera mismatch.
+- Patch: bus yaw now follows track heading + dynamic yaw directly (no tiny scaled clamp), reducing 12-o'clock fixed-body look on curves.

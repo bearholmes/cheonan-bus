@@ -29,6 +29,13 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v))
 }
 
+function normalizeAngle(angle) {
+  let a = angle
+  while (a > Math.PI) a -= Math.PI * 2
+  while (a < -Math.PI) a += Math.PI * 2
+  return a
+}
+
 function zoneCurve(distance) {
   for (const zone of ACTIVE_CURVE_ZONES) {
     if (distance >= zone.start && distance < zone.end) return zone.curve
@@ -173,6 +180,76 @@ function sampleTrackPoint(state, distance) {
   }
 }
 
+function projectWorldToTrack(state, worldX, worldZ, hintDistance = 0) {
+  const track = state.track
+  if (!track || track.length < 2) {
+    const point = sampleTrackPoint(state, hintDistance)
+    const dx = worldX - point.centerX
+    const dz = worldZ - point.centerZ
+    return {
+      ...point,
+      distance: hintDistance,
+      lateral: dx * point.rightX + dz * point.rightZ
+    }
+  }
+
+  const maxSegmentIndex = track.length - 2
+  const hintIndex = clamp(Math.floor(hintDistance / SEGMENT_LENGTH), 0, maxSegmentIndex)
+  const searchRadius = 140
+  const startIndex = Math.max(0, hintIndex - searchRadius)
+  const endIndex = Math.min(maxSegmentIndex, hintIndex + searchRadius)
+
+  let best = null
+  let bestDistSq = Number.POSITIVE_INFINITY
+
+  for (let i = startIndex; i <= endIndex; i += 1) {
+    const p0 = track[i]
+    const p1 = track[i + 1]
+    const vx = p1.x - p0.x
+    const vz = p1.z - p0.z
+    const lenSq = vx * vx + vz * vz || 1
+
+    const wx = worldX - p0.x
+    const wz = worldZ - p0.z
+    const t = clamp((wx * vx + wz * vz) / lenSq, 0, 1)
+
+    const centerX = p0.x + vx * t
+    const centerZ = p0.z + vz * t
+    const dx = worldX - centerX
+    const dz = worldZ - centerZ
+    const distSq = dx * dx + dz * dz
+
+    if (distSq < bestDistSq) {
+      const len = Math.sqrt(lenSq) || 1
+      bestDistSq = distSq
+      best = {
+        segmentIndex: i,
+        distance: p0.distance + (p1.distance - p0.distance) * t,
+        centerX,
+        centerZ,
+        heading: Math.atan2(vx, vz),
+        rightX: vz / len,
+        rightZ: -vx / len,
+        curve: p0.curve + (p1.curve - p0.curve) * t
+      }
+    }
+  }
+
+  if (!best) {
+    const point = sampleTrackPoint(state, hintDistance)
+    const dx = worldX - point.centerX
+    const dz = worldZ - point.centerZ
+    return {
+      ...point,
+      distance: hintDistance,
+      lateral: dx * point.rightX + dz * point.rightZ
+    }
+  }
+
+  const lateral = (worldX - best.centerX) * best.rightX + (worldZ - best.centerZ) * best.rightZ
+  return { ...best, lateral }
+}
+
 const samplePool = Array.from({ length: VISIBLE_SEGMENTS + BACK_VISIBLE_SEGMENTS + 12 }, () => ({
   i: 0,
   centerX: 0,
@@ -314,6 +391,7 @@ export function buildStopMarker(state) {
 export function createInitialState() {
   const firstStopGap = 380
   const track = generateTrack(TRACK_RUN_DISTANCE)
+  const startPoint = sampleTrackPoint({ track }, 0)
 
   const state = {
     mode: 'menu',
@@ -329,6 +407,11 @@ export function createInitialState() {
 
     distance: 0,
     trackX: 0,
+    curveNow: startPoint.curve,
+    trackSegmentHint: 0,
+    worldX: startPoint.centerX,
+    worldZ: startPoint.centerZ,
+    worldYaw: startPoint.heading,
 
     prevPlayerX: 0,
     prevLateralVel: 0,
@@ -338,6 +421,9 @@ export function createInitialState() {
     prevPitch: 0,
     prevDistance: 0,
     prevTrackX: 0,
+    prevWorldX: startPoint.centerX,
+    prevWorldZ: startPoint.centerZ,
+    prevWorldYaw: startPoint.heading,
 
     routeSeed: 1,
     nextStopDistance: firstStopGap,
@@ -381,6 +467,7 @@ export function startRun(state) {
   ACTIVE_CURVE_ZONES = generateCurveZones(seed)
 
   state.track = generateTrack(TRACK_RUN_DISTANCE)
+  const startPoint = sampleTrackPoint(state, 0)
 
   state.mode = 'running'
   state.speed = 0
@@ -400,6 +487,11 @@ export function startRun(state) {
   state.playerX = 0
   state.lateralVel = 0
   state.trackX = 0
+  state.curveNow = startPoint.curve
+  state.trackSegmentHint = 0
+  state.worldX = startPoint.centerX
+  state.worldZ = startPoint.centerZ
+  state.worldYaw = startPoint.heading
 
   state.prevPlayerX = 0
   state.prevLateralVel = 0
@@ -409,6 +501,9 @@ export function startRun(state) {
   state.prevPitch = 0
   state.prevDistance = 0
   state.prevTrackX = 0
+  state.prevWorldX = startPoint.centerX
+  state.prevWorldZ = startPoint.centerZ
+  state.prevWorldYaw = startPoint.heading
 
   state.missionTime = INITIAL_MISSION_TIME
   state.stopsServed = 0
@@ -437,6 +532,9 @@ export function updateState(state, input, dt) {
   state.prevPitch = state.pitch
   state.prevDistance = state.distance
   state.prevTrackX = state.trackX
+  state.prevWorldX = state.worldX
+  state.prevWorldZ = state.worldZ
+  state.prevWorldYaw = state.worldYaw
 
   const step = Math.min(dt, 0.1)
 
@@ -508,31 +606,45 @@ export function updateState(state, input, dt) {
   const steerInput = (input.right ? 1 : 0) - (input.left ? 1 : 0)
   state.steeringValue += (steerInput - state.steeringValue) * step * (STEER_RATE * 3)
 
-  const currentCurve = sampleCurve(state.distance)
-  const isMoving = Math.abs(state.speed) > 0.05
-  const steerPower = isMoving ? (38.0 + Math.abs(state.speed) * 0.45) : 0
+  const speedAbs = Math.abs(state.speed)
+  const projectionBefore = projectWorldToTrack(state, state.worldX, state.worldZ, state.distance)
+  const dir = state.speed < -0.1 ? -1 : 1
+  const steerAuthority = clamp((speedAbs - 0.4) / 3.6, 0, 1)
+  const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority
+  const headingError = normalizeAngle(state.worldYaw - projectionBefore.heading)
+  const alignAuthority = clamp(speedAbs / 5.5, 0, 1)
+  const alignYawRate = -headingError * (1.15 + speedAbs * 0.006) * alignAuthority
+  state.worldYaw = normalizeAngle(state.worldYaw + (steerYawRate + alignYawRate) * step)
 
-  state.lateralVel = state.steeringValue * steerPower
-  state.playerX += state.lateralVel * step
+  const forwardX = Math.sin(state.worldYaw)
+  const forwardZ = Math.cos(state.worldYaw)
+  state.worldX += forwardX * state.speed * step
+  state.worldZ += forwardZ * state.speed * step
 
-  const centrifugalForce = currentCurve * state.speed * step * CENTRIFUGAL * 1.5
-  state.playerX -= centrifugalForce
+  let projection = projectWorldToTrack(state, state.worldX, state.worldZ, projectionBefore.distance)
 
   const maxOffRoad = ROAD_HALF_WIDTH * 1.8
-  state.playerX = clamp(state.playerX, -maxOffRoad, maxOffRoad)
+  const clampedOffset = clamp(projection.lateral, -maxOffRoad, maxOffRoad)
+  if (clampedOffset !== projection.lateral) {
+    state.worldX = projection.centerX + projection.rightX * clampedOffset
+    state.worldZ = projection.centerZ + projection.rightZ * clampedOffset
+    projection = projectWorldToTrack(state, state.worldX, state.worldZ, projection.distance)
+  }
 
-  const headingAngle = Math.atan2(state.lateralVel, Math.abs(state.speed) + 2.0)
-  const dir = state.speed < -0.1 ? -1 : 1
-  state.carYaw = -(headingAngle * 2.0 * dir)
-  state.carRoll = -state.steeringValue * state.speed * 0.005
+  state.playerX = clampedOffset
+  state.lateralVel = (state.playerX - state.prevPlayerX) / Math.max(step, 0.0001)
+  state.distance = projection.distance
+  state.trackX = projection.centerX
+  state.curveNow = projection.curve
+  state.trackSegmentHint = projection.segmentIndex
+
+  const slipAngle = normalizeAngle(state.worldYaw - projection.heading)
+  state.carYaw = clamp(slipAngle, -0.45, 0.45)
+  state.carRoll = clamp(-state.steeringValue * speedAbs * 0.0042, -0.24, 0.24)
 
   const deltaSpeed = state.speed - (state.prevSpeed || 0)
   state.pitch = -deltaSpeed * 0.05
   state.prevSpeed = state.speed
-
-  state.distance += state.speed * step
-  const busTrackPoint = sampleTrackPoint(state, state.distance)
-  state.trackX = busTrackPoint.centerX
 
   const distToStop = state.nextStopDistance - state.distance
 
@@ -583,6 +695,9 @@ export function renderGameToText(state) {
     worldTrackX: state.trackX.toFixed(2),
     distance: state.distance.toFixed(1),
     lateralVel: state.lateralVel.toFixed(2),
+    worldX: state.worldX.toFixed(2),
+    worldZ: state.worldZ.toFixed(2),
+    worldYaw: state.worldYaw.toFixed(2),
     steeringValue: state.steeringValue.toFixed(2),
     carYaw: state.carYaw.toFixed(2),
     carRoll: state.carRoll.toFixed(2),
