@@ -257,12 +257,6 @@ export function createSceneRenderer(gl, reportError) {
   const target = vec3.create()
   const up = vec3.fromValues(0, 1, 0)
 
-  let smoothEyeX = 0
-  let smoothEyeZ = 0
-  let smoothTargetX = 0
-  let smoothTargetZ = 0
-  let cameraReady = false
-
   function drawMesh(mesh, model) {
     bindMesh(gl, mesh, positionLocation, colorLocation)
     mat4.multiply(mvpMatrix, viewProjectionMatrix, model)
@@ -392,31 +386,13 @@ export function createSceneRenderer(gl, reportError) {
     const lookRightX = lookForwardZ
     const lookRightZ = -lookForwardX
 
-    const desiredEyeX = busX - lookForwardX * 16.8
-    const desiredEyeZ = busZ - lookForwardZ * 16.8
-    const desiredTargetX = busX + lookForwardX * 40
-    const desiredTargetZ = busZ + lookForwardZ * 40
-
-    if (!cameraReady) {
-      smoothEyeX = desiredEyeX
-      smoothEyeZ = desiredEyeZ
-      smoothTargetX = desiredTargetX
-      smoothTargetZ = desiredTargetZ
-      cameraReady = true
-    } else {
-      smoothEyeX += (desiredEyeX - smoothEyeX) * 0.34
-      smoothEyeZ += (desiredEyeZ - smoothEyeZ) * 0.34
-      smoothTargetX += (desiredTargetX - smoothTargetX) * 0.4
-      smoothTargetZ += (desiredTargetZ - smoothTargetZ) * 0.4
-    }
-
-    eye[0] = smoothEyeX
+    eye[0] = busX - lookForwardX * 16.8
     eye[1] = 5.3
-    eye[2] = smoothEyeZ
+    eye[2] = busZ - lookForwardZ * 16.8
 
-    target[0] = smoothTargetX
+    target[0] = busX + lookForwardX * 40
     target[1] = 0.95
-    target[2] = smoothTargetZ
+    target[2] = busZ + lookForwardZ * 40
 
     const aspect = gl.canvas.width / gl.canvas.height
     mat4.perspective(projectionMatrix, (45 * Math.PI) / 180, aspect, 0.1, 700)

@@ -12,6 +12,7 @@ const STOP_MISS_DISTANCE = 150
 const TARGET_PASSENGERS = 24
 const INITIAL_MISSION_TIME = 90
 const STAGE_STOP_TARGET = 3
+const STRAIGHT_START_DISTANCE = 800
 
 const SEGMENT_LENGTH = 5.2
 const VISIBLE_SEGMENTS = 66
@@ -19,8 +20,8 @@ const BACK_VISIBLE_SEGMENTS = 15
 const TRACK_RUN_DISTANCE = 30000
 
 const DEFAULT_CURVE_ZONES = [
-  { start: 0, end: 140, curve: 0.0 },
-  { start: 140, end: 2500, curve: 0.0 }
+  { start: 0, end: STRAIGHT_START_DISTANCE, curve: 0.0 },
+  { start: STRAIGHT_START_DISTANCE, end: 2500, curve: 0.0 }
 ]
 
 let ACTIVE_CURVE_ZONES = DEFAULT_CURVE_ZONES
@@ -44,6 +45,7 @@ function zoneCurve(distance) {
 }
 
 function sampleCurve(distance) {
+  if (distance < STRAIGHT_START_DISTANCE) return 0
   const base = zoneCurve(distance)
   const noise = Math.sin(distance * 0.01) * 0.05
   return clamp(base + noise, -1.2, 1.2)
@@ -70,8 +72,8 @@ function createRng(seed) {
 
 function generateCurveZones(seed) {
   const rng = createRng(seed)
-  const zones = [{ start: 0, end: 140, curve: 0 }]
-  let start = 140
+  const zones = [{ start: 0, end: STRAIGHT_START_DISTANCE, curve: 0 }]
+  let start = STRAIGHT_START_DISTANCE
 
   while (start < 10000) {
     const straightChance = 0.2
@@ -153,7 +155,25 @@ function sampleTrackPoint(state, distance) {
   const maxDistance = track[maxIndex].distance
   let d = distance
 
-  if (d < 0) d = 0
+  if (d < 0) {
+    const p0 = track[0]
+    const p1 = track[1]
+    const dxStep = p1.x - p0.x
+    const dzStep = p1.z - p0.z
+    const len = Math.hypot(dxStep, dzStep) || 1
+    const forwardX = dxStep / len
+    const forwardZ = dzStep / len
+
+    return {
+      centerX: p0.x + forwardX * d,
+      centerZ: p0.z + forwardZ * d,
+      heading: p0.heading,
+      rightX: p0.rightX,
+      rightZ: p0.rightZ,
+      curve: p0.curve,
+      segmentIndex: 0
+    }
+  }
   if (d > maxDistance) d = maxDistance
 
   const baseIndex = Math.min(maxIndex - 1, Math.max(0, Math.floor(d / SEGMENT_LENGTH)))
@@ -462,8 +482,7 @@ export function createInitialState() {
 }
 
 export function startRun(state) {
-  const seed = (state.routeSeed + 1) % 9999
-  state.routeSeed = seed
+  const seed = state.routeSeed
   ACTIVE_CURVE_ZONES = generateCurveZones(seed)
 
   state.track = generateTrack(TRACK_RUN_DISTANCE)
@@ -603,7 +622,7 @@ export function updateState(state, input, dt) {
     }
   }
 
-  const steerInput = (input.right ? 1 : 0) - (input.left ? 1 : 0)
+  const steerInput = input.left ? 1 : input.right ? -1 : 0
   state.steeringValue += (steerInput - state.steeringValue) * step * (STEER_RATE * 3)
 
   const speedAbs = Math.abs(state.speed)
@@ -611,10 +630,7 @@ export function updateState(state, input, dt) {
   const dir = state.speed < -0.1 ? -1 : 1
   const steerAuthority = clamp((speedAbs - 0.4) / 3.6, 0, 1)
   const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority
-  const headingError = normalizeAngle(state.worldYaw - projectionBefore.heading)
-  const alignAuthority = clamp(speedAbs / 5.5, 0, 1)
-  const alignYawRate = -headingError * (1.15 + speedAbs * 0.006) * alignAuthority
-  state.worldYaw = normalizeAngle(state.worldYaw + (steerYawRate + alignYawRate) * step)
+  state.worldYaw = normalizeAngle(state.worldYaw + steerYawRate * step)
 
   const forwardX = Math.sin(state.worldYaw)
   const forwardZ = Math.cos(state.worldYaw)
