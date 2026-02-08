@@ -13,3 +13,7 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Patch: replaced direct lateral strafe steering with damped lateral dynamics (accel+damping+recentering) to remove crab-walk motion while preserving stop-game logic.
 - Patch: aligned chase camera with track forward vector and removed steer-driven look target drift that caused diagonal road/camera mismatch.
 - Patch: bus yaw now follows track heading + dynamic yaw directly (no tiny scaled clamp), reducing 12-o'clock fixed-body look on curves.
+- Patch: fixed Space command handling to key-down edge queue (prevents held-space multi-toggle / missed toggle behavior).
+- Patch: fixed start-of-run rear road sampling by extrapolating negative-distance track points (removes bottom grass gap at start frame).
+- Patch: steering sign re-aligned again to user intent (`A/Left = left`, `D/Right = right`) after regression.
+- Patch: HUD stamp text now shows only stage progress (`구간 x/y`), removing stale `대기 중` prefix.

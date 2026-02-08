@@ -95,7 +95,9 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     // 텍스트 네비게이션(TURN)은 시인성을 위해 생략하거나 간소화함
     hud.setNav('', stopDistance, urgency)
     hud.setMessage(state.hudLine)
-    hud.setStamp(`${state.stamp} · 구간 ${state.stageStopsDone}/${state.stageStopsTarget}`)
+    const stageDone = Number.isFinite(state.stageStopsDone) ? state.stageStopsDone : 0
+    const stageTarget = Number.isFinite(state.stageStopsTarget) ? state.stageStopsTarget : 0
+    hud.setStamp(`구간 ${stageDone}/${stageTarget}`)
     if (state.toastSeq > lastToastSeq) {
       hud.showToast(state.toastMessage, state.toastKind)
       lastToastSeq = state.toastSeq

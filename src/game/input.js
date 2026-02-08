@@ -2,8 +2,12 @@ const PREVENT_DEFAULT_CODES = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLe
 
 export function createInputController(target = window) {
   const pressed = new Set()
+  const commandQueue = []
 
   function onKeyDown(event) {
+    if (!event.repeat && event.code === 'Space') {
+      commandQueue.push('space')
+    }
     pressed.add(event.code)
     if (PREVENT_DEFAULT_CODES.has(event.code)) {
       event.preventDefault()
@@ -16,6 +20,7 @@ export function createInputController(target = window) {
 
   function onBlur() {
     pressed.clear()
+    commandQueue.length = 0
   }
 
   target.addEventListener('keydown', onKeyDown)
@@ -24,13 +29,16 @@ export function createInputController(target = window) {
 
   return {
     read() {
+      const left = pressed.has('KeyA') || pressed.has('ArrowLeft')
+      const right = pressed.has('KeyD') || pressed.has('ArrowRight')
       return {
         accelerate: pressed.has('KeyW') || pressed.has('ArrowUp'),
         brake: pressed.has('KeyS') || pressed.has('ArrowDown'),
-        left: pressed.has('KeyA') || pressed.has('ArrowLeft'),
-        right: pressed.has('KeyD') || pressed.has('ArrowRight'),
+        left,
+        right,
+        steerAxis: (right ? 1 : 0) - (left ? 1 : 0),
         reverse: pressed.has('KeyR'),
-        command: pressed.has('Space') ? 'space' : null
+        command: commandQueue.shift() ?? null
       }
     },
     dispose() {
@@ -38,6 +46,7 @@ export function createInputController(target = window) {
       target.removeEventListener('keyup', onKeyUp)
       target.removeEventListener('blur', onBlur)
       pressed.clear()
+      commandQueue.length = 0
     }
   }
 }
