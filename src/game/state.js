@@ -4,6 +4,7 @@ const ACCEL = 8.5
 const REVERSE_ACCEL = 30
 const BRAKE = 96
 const STEER_RATE = 4.0
+const STEER_YAW_SIGN = -1
 const NATURAL_DECEL = 12.0
 const CENTRIFUGAL = 0.25
 const ROAD_HALF_WIDTH = 11.6
@@ -12,11 +13,11 @@ const STOP_MISS_DISTANCE = 150
 const TARGET_PASSENGERS = 24
 const INITIAL_MISSION_TIME = 90
 const STAGE_STOP_TARGET = 3
-const STRAIGHT_START_DISTANCE = 800
+const STRAIGHT_START_DISTANCE = 70
 
-const SEGMENT_LENGTH = 5.2
-const VISIBLE_SEGMENTS = 66
-const BACK_VISIBLE_SEGMENTS = 15
+const SEGMENT_LENGTH = 2.6
+const VISIBLE_SEGMENTS = 132
+const BACK_VISIBLE_SEGMENTS = 28
 const TRACK_RUN_DISTANCE = 30000
 
 const DEFAULT_CURVE_ZONES = [
@@ -76,9 +77,9 @@ function generateCurveZones(seed) {
   let start = STRAIGHT_START_DISTANCE
 
   while (start < 10000) {
-    const straightChance = 0.2
+    const straightChance = 0.05
     const makeStraight = rng() < straightChance
-    const length = makeStraight ? 150 : 100 + rng() * 150
+    const length = makeStraight ? 65 : 70 + rng() * 120
     let curve = 0
 
     if (!makeStraight) {
@@ -342,11 +343,10 @@ export function buildProps(samples, state) {
     if (biome === 'city') {
       density = 0.6
       if (h2 > 0.3) type = 'tower'
-      else type = 'sign'
+      else type = 'tree'
     } else if (biome === 'suburb') {
       density = 0.4
       if (h2 > 0.8) type = 'tower'
-      else if (h2 > 0.7) type = 'sign'
       else type = 'tree'
     } else {
       density = 0.5
@@ -410,6 +410,7 @@ export function buildStopMarker(state) {
 
 export function createInitialState() {
   const firstStopGap = 380
+  const initialSeed = ((Date.now() ^ ((Math.random() * 0x7fffffff) | 0)) & 0x7fffffff) || 1
   const track = generateTrack(TRACK_RUN_DISTANCE)
   const startPoint = sampleTrackPoint({ track }, 0)
 
@@ -445,7 +446,8 @@ export function createInitialState() {
     prevWorldZ: startPoint.centerZ,
     prevWorldYaw: startPoint.heading,
 
-    routeSeed: 1,
+    routeSeed: initialSeed,
+    activeRouteSeed: initialSeed,
     nextStopDistance: firstStopGap,
     stopIndex: 0,
     missedStops: 0,
@@ -483,6 +485,8 @@ export function createInitialState() {
 
 export function startRun(state) {
   const seed = state.routeSeed
+  state.activeRouteSeed = seed
+  state.routeSeed = ((seed + 1) & 0x7fffffff) || 1
   ACTIVE_CURVE_ZONES = generateCurveZones(seed)
 
   state.track = generateTrack(TRACK_RUN_DISTANCE)
@@ -622,14 +626,16 @@ export function updateState(state, input, dt) {
     }
   }
 
-  const steerInput = input.left ? 1 : input.right ? -1 : 0
+  let steerInput = 0
+  if (input.left && !input.right) steerInput = -1
+  else if (input.right && !input.left) steerInput = 1
   state.steeringValue += (steerInput - state.steeringValue) * step * (STEER_RATE * 3)
 
   const speedAbs = Math.abs(state.speed)
   const projectionBefore = projectWorldToTrack(state, state.worldX, state.worldZ, state.distance)
   const dir = state.speed < -0.1 ? -1 : 1
   const steerAuthority = clamp((speedAbs - 0.4) / 3.6, 0, 1)
-  const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority
+  const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority * STEER_YAW_SIGN
   state.worldYaw = normalizeAngle(state.worldYaw + steerYawRate * step)
 
   const forwardX = Math.sin(state.worldYaw)
@@ -714,6 +720,7 @@ export function renderGameToText(state) {
     worldX: state.worldX.toFixed(2),
     worldZ: state.worldZ.toFixed(2),
     worldYaw: state.worldYaw.toFixed(2),
+    routeSeed: state.activeRouteSeed ?? state.routeSeed,
     steeringValue: state.steeringValue.toFixed(2),
     carYaw: state.carYaw.toFixed(2),
     carRoll: state.carRoll.toFixed(2),
