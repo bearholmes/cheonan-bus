@@ -145,6 +145,13 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     return a + (b - a) * t
   }
 
+  function lerpAngle(a, b, t) {
+    let d = b - a
+    while (d > Math.PI) d -= Math.PI * 2
+    while (d < -Math.PI) d += Math.PI * 2
+    return a + d * t
+  }
+
   // [v7.5] Fixed Timestep Loop (60Hz Physics)
   const FIXED_STEP = 1 / 60
   let accumulator = 0
@@ -189,12 +196,19 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
         renderState.pitch = lerp(state.prevPitch, state.pitch, alpha)
         renderState.distance = lerp(state.prevDistance, state.distance, alpha)
         renderState.trackX = lerp(state.prevTrackX || 0, state.trackX, alpha)
+        renderState.worldX = lerp(state.prevWorldX, state.worldX, alpha)
+        renderState.worldZ = lerp(state.prevWorldZ, state.worldZ, alpha)
+        renderState.worldYaw = lerpAngle(state.prevWorldYaw, state.worldYaw, alpha)
+        renderState.renderTrackX = renderState.trackX
         renderState.renderPlayerX = renderState.playerX
         renderState.renderSteeringValue = renderState.steeringValue
         renderState.renderCarYaw = renderState.carYaw
         renderState.renderCarRoll = renderState.carRoll
         renderState.renderPitch = renderState.pitch
         renderState.renderDistance = renderState.distance
+        renderState.renderWorldX = renderState.worldX
+        renderState.renderWorldZ = renderState.worldZ
+        renderState.renderWorldYaw = renderState.worldYaw
       }
 
       const roadSamples = buildRoadSamples(renderState.distance, renderState)
