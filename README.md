@@ -1,9 +1,8 @@
-# BusDriveVite-prod (3D WebGL 2.5D Prototype)
+# BusDriveVite-prod (3D WebGL Prototype)
 
-Pure WebGL로 구현한 2.5D 도시 주행 프로토타입입니다.
+Pure WebGL로 구현한 도시 주행 프로토타입입니다.
 
 ## 핵심 구성
-- 3D WebGL 렌더링(핸드메이드 GLSL + 버퍼 드로우)
 - 시가지 타일맵 + 교차로 노드 그래프
 - A* 경로 탐색 + 턴-바이-턴 네비
 - 시간 제한 미션 루프(도착 2초 시퀀스 / 시간초과 재지령)
