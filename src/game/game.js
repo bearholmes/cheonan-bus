@@ -188,16 +188,25 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
         renderState.carRoll = lerp(state.prevCarRoll, state.carRoll, alpha)
         renderState.pitch = lerp(state.prevPitch, state.pitch, alpha)
         renderState.distance = lerp(state.prevDistance, state.distance, alpha)
-        // TrackX is crucial for background, interpolate it too
-        // Wait, trackX is not in state prev list? Added in step 846. Yes.
         renderState.trackX = lerp(state.prevTrackX || 0, state.trackX, alpha)
+        renderState.renderPlayerX = renderState.playerX
+        renderState.renderSteeringValue = renderState.steeringValue
+        renderState.renderCarYaw = renderState.carYaw
+        renderState.renderCarRoll = renderState.carRoll
+        renderState.renderPitch = renderState.pitch
+        renderState.renderDistance = renderState.distance
       }
 
-      // Generate Visuals based on Interpolated Distance
-      // We must call this here because we removed it from updateState
-      state.roadSamples = buildRoadSamples(renderState.distance, renderState)
-      state.props = buildProps(state.roadSamples, renderState)
-      state.stopMarker = buildStopMarker(renderState)
+      const roadSamples = buildRoadSamples(renderState.distance, renderState)
+      const props = buildProps(roadSamples, renderState)
+      const stopMarker = buildStopMarker(renderState)
+
+      renderState.roadSamples = roadSamples
+      renderState.props = props
+      renderState.stopMarker = stopMarker
+      state.roadSamples = roadSamples
+      state.props = props
+      state.stopMarker = stopMarker
 
       resizeCanvasToDisplaySize(canvas, gl)
       renderer.draw(renderState, now / 1000)

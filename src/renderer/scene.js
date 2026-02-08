@@ -1,7 +1,7 @@
 import { mat4, vec3 } from '../math/mat.js'
 import { assertNoGLError, createProgram, drainGLErrors, getInstancedExt } from './gl.js'
 import { createCubeGeometry, createPlaneGeometry, createCylinderGeometry, createConeGeometry } from './geometry.js'
-import { bindMesh, createMesh, createInstancedMesh, createInstanceBuffer, bindInstancedMesh } from './mesh.js'
+import { bindMesh, createMesh, createInstanceBuffer, bindInstancedMesh } from './mesh.js'
 
 const VERTEX_SHADER_SOURCE = `
 attribute vec3 a_pos;
@@ -37,25 +37,163 @@ void main() {
 }
 `
 
+const BUS_X = 0
+const BUS_Z = 8.1
 
-// [v6.7] 세그먼트 회전 추가: 곡률에 맞춰 Y축 회전하여 틈새 제거
-function drawSegmentBand(drawMesh, modelMatrix, width, depth, y, colorMesh, x, z, angle = 0) {
-  mat4.identity(modelMatrix)
-  mat4.translate(modelMatrix, modelMatrix, [x, y, z])
-  // 아케이드 스타일: 단순 Y축 회전으로 연결감 확보
-  if (Math.abs(angle) > 0.001) {
-    mat4.rotateY(modelMatrix, modelMatrix, angle)
+const RUMBLE_RED = [0.88, 0.18, 0.18]
+const RUMBLE_WHITE = [0.93, 0.93, 0.9]
+
+function createRibbon(gl, maxSegments, defaultColor) {
+  const vertexCapacity = (maxSegments + 1) * 2
+  const vertices = new Float32Array(vertexCapacity * 6)
+  const indices = new Uint16Array(maxSegments * 6)
+
+  for (let i = 0; i < maxSegments; i += 1) {
+    const a = i * 2
+    const b = a + 1
+    const c = a + 2
+    const d = a + 3
+    const idx = i * 6
+
+    indices[idx + 0] = a
+    indices[idx + 1] = c
+    indices[idx + 2] = b
+    indices[idx + 3] = b
+    indices[idx + 4] = c
+    indices[idx + 5] = d
   }
-  // [v7.7] Scale Tuning: 틈새 방지 + Z-fighting 방지 (Layering 사용 전제)
-  mat4.scale(modelMatrix, modelMatrix, [1.02, 1, 1.05])
 
-  drawMesh(colorMesh, modelMatrix)
+  const vertexBuffer = gl.createBuffer()
+  const indexBuffer = gl.createBuffer()
+  if (!vertexBuffer || !indexBuffer) {
+    throw new Error('Unable to allocate ribbon buffers.')
+  }
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
+  gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW)
+
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+
+  return {
+    vertexBuffer,
+    indexBuffer,
+    vertices,
+    defaultColor,
+    indexCount: 0
+  }
+}
+
+function updateRibbonGeometry(gl, ribbon, samples, offsetA, offsetB, y) {
+  if (!samples || samples.length < 2) {
+    ribbon.indexCount = 0
+    return
+  }
+
+  const [r, g, b] = ribbon.defaultColor
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const s = samples[i]
+    const ax = s.x + s.rightX * offsetA
+    const az = s.z + s.rightZ * offsetA
+    const bx = s.x + s.rightX * offsetB
+    const bz = s.z + s.rightZ * offsetB
+
+    const base = i * 12
+    ribbon.vertices[base + 0] = ax
+    ribbon.vertices[base + 1] = y
+    ribbon.vertices[base + 2] = az
+    ribbon.vertices[base + 3] = r
+    ribbon.vertices[base + 4] = g
+    ribbon.vertices[base + 5] = b
+
+    ribbon.vertices[base + 6] = bx
+    ribbon.vertices[base + 7] = y
+    ribbon.vertices[base + 8] = bz
+    ribbon.vertices[base + 9] = r
+    ribbon.vertices[base + 10] = g
+    ribbon.vertices[base + 11] = b
+  }
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbon.vertexBuffer)
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbon.vertices.subarray(0, samples.length * 12))
+  ribbon.indexCount = (samples.length - 1) * 6
+}
+
+function updateRumbleGeometry(gl, ribbon, samples, offsetA, offsetB, y) {
+  if (!samples || samples.length < 2) {
+    ribbon.indexCount = 0
+    return
+  }
+
+  for (let i = 0; i < samples.length; i += 1) {
+    const s = samples[i]
+    const ax = s.x + s.rightX * offsetA
+    const az = s.z + s.rightZ * offsetA
+    const bx = s.x + s.rightX * offsetB
+    const bz = s.z + s.rightZ * offsetB
+
+    const useRed = Math.floor(s.segmentIndex / 4) % 2 === 0
+    const [r, g, b] = useRed ? RUMBLE_RED : RUMBLE_WHITE
+
+    const base = i * 12
+    ribbon.vertices[base + 0] = ax
+    ribbon.vertices[base + 1] = y
+    ribbon.vertices[base + 2] = az
+    ribbon.vertices[base + 3] = r
+    ribbon.vertices[base + 4] = g
+    ribbon.vertices[base + 5] = b
+
+    ribbon.vertices[base + 6] = bx
+    ribbon.vertices[base + 7] = y
+    ribbon.vertices[base + 8] = bz
+    ribbon.vertices[base + 9] = r
+    ribbon.vertices[base + 10] = g
+    ribbon.vertices[base + 11] = b
+  }
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbon.vertexBuffer)
+  gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbon.vertices.subarray(0, samples.length * 12))
+  ribbon.indexCount = (samples.length - 1) * 6
+}
+
+function drawRibbon(gl, ribbon, positionLocation, colorLocation) {
+  if (ribbon.indexCount <= 0) return
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, ribbon.vertexBuffer)
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ribbon.indexBuffer)
+  gl.enableVertexAttribArray(positionLocation)
+  gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 24, 0)
+  gl.enableVertexAttribArray(colorLocation)
+  gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 24, 12)
+
+  gl.drawElements(gl.TRIANGLES, ribbon.indexCount, gl.UNSIGNED_SHORT, 0)
+}
+
+function normalize2(x, z) {
+  const len = Math.hypot(x, z) || 1
+  return [x / len, z / len]
+}
+
+function toLocal(worldX, worldZ, originX, originZ, forwardX, forwardZ, rightX, rightZ) {
+  const dx = worldX - originX
+  const dz = worldZ - originZ
+
+  const x = dx * rightX + dz * rightZ
+  const forward = dx * forwardX + dz * forwardZ
+  const z = BUS_Z - forward
+
+  return [x, z]
+}
+
+function isVisibleLocal(x, z) {
+  return z < 35 && z > -300 && Math.abs(x) < 140
 }
 
 export function createSceneRenderer(gl, reportError) {
   const ext = getInstancedExt(gl)
   if (!ext) {
-    console.warn('Angle_instanced_arrays not supported, performance may suffer.')
+    console.warn('ANGLE_instanced_arrays not supported, performance may suffer.')
   }
 
   const program = createProgram(gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
@@ -73,16 +211,10 @@ export function createSceneRenderer(gl, reportError) {
     throw new Error('Shader attribute/uniform lookup failed.')
   }
 
-  // Helper to manage instance buffers
   function createBatch(mesh, initialCapacity = 256) {
     const data = new Float32Array(initialCapacity * 16)
-    const instanceBuffer = createInstanceBuffer(gl, data, 16) // 16 floats for mat4
-
-    // We need to define the attributes for the matrix columns
-    // modelLocI is the start. It takes 4 attribute slots.
-    const attributes = [
-      { buffer: instanceBuffer, location: modelLocI, numComponents: 16 }
-    ]
+    const instanceBuffer = createInstanceBuffer(gl, data, 16)
+    const attributes = [{ buffer: instanceBuffer, location: modelLocI, numComponents: 16 }]
 
     return {
       mesh,
@@ -102,7 +234,7 @@ export function createSceneRenderer(gl, reportError) {
           this.ensureCapacity(this.count + 64)
         }
         this.data.set(modelMatrix, this.count * 16)
-        this.count++
+        this.count += 1
       },
       flush(viewProjectionMatrix) {
         if (this.count === 0) return
@@ -116,37 +248,40 @@ export function createSceneRenderer(gl, reportError) {
         if (ext) {
           ext.drawElementsInstancedANGLE(gl.TRIANGLES, this.mesh.indexCount, gl.UNSIGNED_SHORT, 0, this.count)
         }
+
         this.count = 0
       }
     }
   }
 
-  const roadDepth = 5.2
   const roadWidth = 19.2
   const rumbleWidth = 2.1
   const shoulderWidth = 7.4
   const grassWidth = 32
-  const rumbleOffset = roadWidth / 2 + rumbleWidth / 2
-  const shoulderOffset = roadWidth / 2 + rumbleWidth + shoulderWidth / 2
-  const grassOffset = roadWidth / 2 + rumbleWidth + shoulderWidth + grassWidth / 2
 
-  const roadMesh = createMesh(gl, createPlaneGeometry(roadWidth, roadDepth, 0, [0.2, 0.21, 0.23]))
-  const shoulderMesh = createMesh(gl, createPlaneGeometry(shoulderWidth, roadDepth, 0, [0.84, 0.81, 0.72]))
-  // [v7.8] Increase Decal Y-offset (0.01 -> 0.08) to fix Z-fighting flicker
-  const rumbleRedMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.08, [0.88, 0.18, 0.18]))
-  const rumbleWhiteMesh = createMesh(gl, createPlaneGeometry(rumbleWidth, roadDepth, 0.08, [0.93, 0.93, 0.9]))
-  const grassMesh = createMesh(gl, createPlaneGeometry(grassWidth, roadDepth, 0, [0.17, 0.47, 0.2]))
-  // [v6.7] Z-fighting 방지를 위해 Ground 높이 하향 조정 (-0.02 -> -0.1)
+  const roadHalf = roadWidth / 2
+  const rumbleOuter = roadHalf + rumbleWidth
+  const shoulderOuter = rumbleOuter + shoulderWidth
+  const grassOuter = shoulderOuter + grassWidth
+
+  const maxSegments = 120
+  const ribbonRoad = createRibbon(gl, maxSegments, [0.2, 0.21, 0.23])
+  const ribbonShoulderLeft = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
+  const ribbonShoulderRight = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
+  const ribbonRumbleLeft = createRibbon(gl, maxSegments, RUMBLE_RED)
+  const ribbonRumbleRight = createRibbon(gl, maxSegments, RUMBLE_RED)
+  const ribbonGrassLeft = createRibbon(gl, maxSegments, [0.17, 0.47, 0.2])
+  const ribbonGrassRight = createRibbon(gl, maxSegments, [0.17, 0.47, 0.2])
+
   const groundMesh = createMesh(gl, createPlaneGeometry(160, 110, -0.1, [0.14, 0.39, 0.17]))
   const laneDashMesh = createMesh(gl, createPlaneGeometry(0.25, 2.4, 0.08, [0.95, 0.95, 0.9]))
 
-  // Improved Assets
   const treeTrunkMesh = createMesh(gl, createCylinderGeometry(0.3, 0.4, 1.2, 6, [0.3, 0.2, 0.1]))
   const treeLeavesMesh = createMesh(gl, createConeGeometry(2.2, 3.5, 7, [0.15, 0.45, 0.18]))
-
   const towerMesh = createMesh(gl, createCubeGeometry(1.4, 5.1, 1.4, [0.38, 0.56, 0.7]))
   const signMesh = createMesh(gl, createCubeGeometry(2.6, 1.3, 0.26, [0.82, 0.9, 0.98]))
   const signPoleMesh = createMesh(gl, createCylinderGeometry(0.12, 0.12, 1.8, 6, [0.18, 0.22, 0.27]))
+
   const stopPoleMesh = createMesh(gl, createCylinderGeometry(0.1, 0.1, 1.95, 6, [0.17, 0.2, 0.24]))
   const stopBoardMesh = createMesh(gl, createCubeGeometry(0.68, 0.72, 0.1, [0.95, 0.86, 0.23]))
   const stopBenchMesh = createMesh(gl, createCubeGeometry(1.25, 0.2, 0.42, [0.44, 0.3, 0.18]))
@@ -154,24 +289,16 @@ export function createSceneRenderer(gl, reportError) {
   const stopZoneMesh = createMesh(gl, createPlaneGeometry(5.2, 7.8, 0.015, [0.95, 0.93, 0.35]))
   const stopZoneStripeMesh = createMesh(gl, createPlaneGeometry(4.8, 6.9, 0.02, [0.1, 0.13, 0.16]))
   const stopBeaconMesh = createMesh(gl, createCubeGeometry(0.6, 0.6, 0.6, [1, 0.84, 0.34]))
-  const stopBeamMesh = createMesh(gl, createCubeGeometry(0.95, 8.4, 0.95, [0.98, 0.35, 0.25])) // Keep beam as box for sci-fi feel or make cylinder
+  const stopBeamMesh = createMesh(gl, createCubeGeometry(0.95, 8.4, 0.95, [0.98, 0.35, 0.25]))
   const stopPillarMesh = createMesh(gl, createCylinderGeometry(0.14, 0.14, 2.4, 6, [0.12, 0.16, 0.2]))
 
   const busBody = createMesh(gl, createCubeGeometry(3.2, 1.22, 7.05, [0.2, 0.62, 0.28]))
   const busUpper = createMesh(gl, createCubeGeometry(3.05, 1.04, 5.9, [0.13, 0.28, 0.2]))
   const busRoof = createMesh(gl, createCubeGeometry(2.88, 0.22, 6.45, [0.78, 0.82, 0.84]))
-  const busFrontCap = createMesh(gl, createCubeGeometry(2.9, 0.62, 0.7, [0.16, 0.35, 0.22]))
   const busWindshield = createMesh(gl, createCubeGeometry(2.56, 0.72, 0.16, [0.53, 0.82, 0.95]))
-  const busWindowPane = createMesh(gl, createCubeGeometry(0.12, 0.48, 0.72, [0.45, 0.72, 0.88]))
-  const busWindowDivider = createMesh(gl, createCubeGeometry(0.08, 0.56, 0.1, [0.14, 0.2, 0.16]))
-  const busDoor = createMesh(gl, createCubeGeometry(0.12, 0.78, 1.02, [0.08, 0.22, 0.16]))
-  const busStripe = createMesh(gl, createCubeGeometry(3.06, 0.24, 6.85, [0.95, 0.46, 0.18]))
   const busBumper = createMesh(gl, createCubeGeometry(2.86, 0.28, 0.34, [0.14, 0.16, 0.2]))
-  const busRoutePlate = createMesh(gl, createCubeGeometry(1.72, 0.3, 0.08, [0.98, 0.63, 0.14]))
-  // 정교한 실린더 바퀴: 반지름 0.45, 두께 0.45, 16분할
   const wheel = createMesh(gl, createCylinderGeometry(0.45, 0.45, 0.45, 16, [0.06, 0.06, 0.07]))
 
-  // Create batches for props
   const treeTrunkBatch = createBatch(treeTrunkMesh)
   const treeLeavesBatch = createBatch(treeLeavesMesh)
   const towerBatch = createBatch(towerMesh)
@@ -183,8 +310,25 @@ export function createSceneRenderer(gl, reportError) {
   const viewProjectionMatrix = mat4.create()
   const modelMatrix = mat4.create()
   const mvpMatrix = mat4.create()
-  let smoothCamX = 0
+  const busBaseMatrix = mat4.create()
+  const partMatrix = mat4.create()
+
+  const eye = vec3.fromValues(0, 5.0, 26.0)
+  const target = vec3.fromValues(0, 0.8, -35.0)
+  const up = vec3.fromValues(0, 1, 0)
+
   let smoothLookX = 0
+
+  const localSamples = []
+
+  function ensureLocalSamples(size) {
+    while (localSamples.length < size) {
+      localSamples.push({ x: 0, z: 0, rightX: 1, rightZ: 0, heading: 0, segmentIndex: 0, i: 0 })
+    }
+    if (localSamples.length > size) {
+      localSamples.length = size
+    }
+  }
 
   function drawMesh(mesh, model) {
     bindMesh(gl, mesh, positionLocation, colorLocation)
@@ -193,18 +337,82 @@ export function createSceneRenderer(gl, reportError) {
     gl.drawElements(gl.TRIANGLES, mesh.indexCount, gl.UNSIGNED_SHORT, 0)
   }
 
-  function queueProp(prop, worldX, worldZ) {
+  function buildLocalSamples(state) {
+    const samples = state.roadSamples || []
+    if (samples.length < 2) return null
+
+    let busIndex = samples.findIndex((s) => s.i === 0)
+    if (busIndex < 0) busIndex = Math.min(15, samples.length - 1)
+
+    const busSample = samples[busIndex]
+    const laneOffset = state.renderPlayerX ?? state.playerX ?? 0
+
+    const busWorldX = busSample.centerX + busSample.rightX * laneOffset
+    const busWorldZ = busSample.centerZ + busSample.rightZ * laneOffset
+
+    const forwardX = Math.sin(busSample.heading)
+    const forwardZ = Math.cos(busSample.heading)
+    const rightX = busSample.rightX
+    const rightZ = busSample.rightZ
+
+    ensureLocalSamples(samples.length)
+
+    for (let i = 0; i < samples.length; i += 1) {
+      const s = samples[i]
+      const [x, z] = toLocal(s.centerX, s.centerZ, busWorldX, busWorldZ, forwardX, forwardZ, rightX, rightZ)
+      const out = localSamples[i]
+      out.x = x
+      out.z = z
+      out.segmentIndex = s.segmentIndex
+      out.i = s.i
+      out.heading = 0
+      out.rightX = 1
+      out.rightZ = 0
+    }
+
+    for (let i = 0; i < localSamples.length - 1; i += 1) {
+      const curr = localSamples[i]
+      const next = localSamples[i + 1]
+      const fx = next.x - curr.x
+      const fz = next.z - curr.z
+      const [nfx, nfz] = normalize2(fx, fz)
+      curr.rightX = -nfz
+      curr.rightZ = nfx
+      curr.heading = Math.atan2(nfx, -nfz)
+    }
+
+    const last = localSamples[localSamples.length - 1]
+    const prev = localSamples[localSamples.length - 2]
+    last.rightX = prev.rightX
+    last.rightZ = prev.rightZ
+    last.heading = prev.heading
+
+    return {
+      busSample,
+      busWorldX,
+      busWorldZ,
+      forwardX,
+      forwardZ,
+      rightX,
+      rightZ,
+      samples: localSamples
+    }
+  }
+
+  function queueLocalProp(prop, basis) {
+    const [x, z] = toLocal(prop.x, prop.z, basis.busWorldX, basis.busWorldZ, basis.forwardX, basis.forwardZ, basis.rightX, basis.rightZ)
+    if (!isVisibleLocal(x, z)) return
+
     const scale = prop.scale
+
     if (prop.kind === 'tree') {
-      // Trunk
       mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [worldX, 0.6 * scale, worldZ])
+      mat4.translate(modelMatrix, modelMatrix, [x, 0.6 * scale, z])
       mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
       treeTrunkBatch.add(modelMatrix)
 
-      // Leaves
       mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [worldX, 2.2 * scale, worldZ])
+      mat4.translate(modelMatrix, modelMatrix, [x, 2.2 * scale, z])
       mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
       treeLeavesBatch.add(modelMatrix)
       return
@@ -212,164 +420,150 @@ export function createSceneRenderer(gl, reportError) {
 
     if (prop.kind === 'tower') {
       mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [worldX, 2.2 * scale, worldZ])
+      mat4.translate(modelMatrix, modelMatrix, [x, 2.2 * scale, z])
       mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
       towerBatch.add(modelMatrix)
       return
     }
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [worldX, 0.95 * scale, worldZ])
+    mat4.translate(modelMatrix, modelMatrix, [x, 0.95 * scale, z])
     mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
     signPoleBatch.add(modelMatrix)
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [worldX, 1.9 * scale, worldZ])
+    mat4.translate(modelMatrix, modelMatrix, [x, 1.9 * scale, z])
     mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
     signBatch.add(modelMatrix)
   }
 
-  function drawStopMarker(stopMarker, worldShiftX, distanceToStop) {
+  function drawLocalStopMarker(stopMarker, basis, distanceToStop) {
     if (!stopMarker) return
-    const x = stopMarker.x + worldShiftX
-    const z = stopMarker.z
+
+    const [poleX, poleZ] = toLocal(stopMarker.x, stopMarker.z, basis.busWorldX, basis.busWorldZ, basis.forwardX, basis.forwardZ, basis.rightX, basis.rightZ)
+    if (!isVisibleLocal(poleX, poleZ)) return
+
+    const [zoneX, zoneZ] = toLocal(stopMarker.zoneX ?? stopMarker.centerX, stopMarker.zoneZ ?? stopMarker.centerZ, basis.busWorldX, basis.busWorldZ, basis.forwardX, basis.forwardZ, basis.rightX, basis.rightZ)
+
+    const localHeading = (stopMarker.heading || 0) - (basis.busSample.heading || 0)
+    const rightLX = Math.cos(localHeading)
+    const rightLZ = -Math.sin(localHeading)
+
     const near = Math.abs(distanceToStop) < 60
     const flash = near ? 1.2 : 1
-    const zoneX = (stopMarker.zoneX ?? stopMarker.centerX ?? 0) + worldShiftX
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.02, z])
+    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.02, zoneZ])
+    mat4.rotateY(modelMatrix, modelMatrix, localHeading)
     drawMesh(stopZoneMesh, modelMatrix)
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.025, z])
+    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.025, zoneZ])
+    mat4.rotateY(modelMatrix, modelMatrix, localHeading)
     drawMesh(stopZoneStripeMesh, modelMatrix)
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [x, 1.0, z])
+    mat4.translate(modelMatrix, modelMatrix, [poleX, 1.0, poleZ])
     drawMesh(stopPoleMesh, modelMatrix)
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 1.25, z - 0.4])
+    mat4.translate(modelMatrix, modelMatrix, [zoneX, 1.25, zoneZ - 0.4])
     drawMesh(stopPillarMesh, modelMatrix)
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [x, 2.15, z])
+    mat4.translate(modelMatrix, modelMatrix, [poleX, 2.15, poleZ])
     drawMesh(stopBoardMesh, modelMatrix)
 
-    const benchX = stopMarker.side === 'right' ? x - 1.1 : x + 1.1
+    const benchSide = stopMarker.side === 'right' ? -1.1 : 1.1
+    const benchX = poleX + rightLX * benchSide
+    const benchZ = poleZ + rightLZ * benchSide
+
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [benchX, 0.45, z + 0.2])
+    mat4.translate(modelMatrix, modelMatrix, [benchX, 0.45, benchZ + 0.2])
+    mat4.rotateY(modelMatrix, modelMatrix, localHeading)
     drawMesh(stopBenchMesh, modelMatrix)
 
     for (const leg of [-0.45, 0.45]) {
       mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [benchX + leg, 0.22, z + 0.2])
+      mat4.translate(modelMatrix, modelMatrix, [benchX + leg * Math.cos(localHeading), 0.22, benchZ + leg * Math.sin(localHeading) + 0.2])
       drawMesh(stopBenchLegMesh, modelMatrix)
     }
 
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [x, 2.75, z])
+    mat4.translate(modelMatrix, modelMatrix, [poleX, 2.75, poleZ])
     mat4.scale(modelMatrix, modelMatrix, [flash, flash, flash])
     drawMesh(stopBeaconMesh, modelMatrix)
 
-    // Tall pulse beam so stop location is obvious even at distance.
     mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 4.5, z])
+    mat4.translate(modelMatrix, modelMatrix, [zoneX, 4.5, zoneZ])
     mat4.scale(modelMatrix, modelMatrix, [near ? 1.3 : 1, 1, near ? 1.3 : 1])
     drawMesh(stopBeamMesh, modelMatrix)
   }
 
   function draw(state) {
+    const basis = buildLocalSamples(state)
+    if (!basis) return
+
+    const local = basis.samples
     const aspect = gl.canvas.width / gl.canvas.height
-    // [v7.7] FOV 60 -> 45 (체감 속도 과장 축소, 현실적인 묵직함)
     mat4.perspective(projectionMatrix, (45 * Math.PI) / 180, aspect, 0.1, 400)
 
-    gl.clearColor(0.36, 0.67, 0.93, 1)
-
-    // playerX는 이제 도로 중심으로부터의 상대적 오프셋입니다.
-    const laneOffset = state.playerX ?? 0
-
-    // 도로의 굽은 정도를 미리 파악하여 카메라가 커브를 미리 바라보게 함
-    const nearSample = state.roadSamples?.[3]
-    const farSample = state.roadSamples?.[14]
-    const roadLook = nearSample && farSample ? (farSample.centerX - nearSample.centerX) * 0.12 : 0
-
-    // 조향 입력에 따른 카메라 시선 변화
-    const steeringLook = (state.steeringValue || 0) * 10.0
+    const nearSample = local[Math.min(3, local.length - 1)]
+    const farSample = local[Math.min(14, local.length - 1)]
+    const roadLook = nearSample && farSample ? (farSample.x - nearSample.x) * 0.12 : 0
+    const steeringLook = (state.renderSteeringValue ?? state.steeringValue ?? 0) * 10.0
     const desiredLookX = roadLook + steeringLook
-    // [v6.8] 카메라 보간 속도 미세 조정 (0.05 -> 0.08: 반응성 향상으로 덜 밀리게 함)
     smoothLookX += (desiredLookX - smoothLookX) * 0.08
 
-    // 3인칭 카메라 설정: 차량 중심은 항상 0 (laneOffset으로 풍경만 이동)
-    const cameraX = 0
-    const eye = vec3.fromValues(cameraX, 5.0, 26.0)
-    const target = vec3.fromValues(cameraX + smoothLookX, 0.8, -35.0)
-    const up = vec3.fromValues(0, 1, 0)
+    target[0] = smoothLookX
+    target[1] = 0.8
+    target[2] = -35.0
 
     mat4.lookAt(viewMatrix, eye, target, up)
     mat4.multiply(viewProjectionMatrix, projectionMatrix, viewMatrix)
 
-    // [v6.4] WebGL 상태 동기화 및 클리어
     gl.useProgram(program)
+    gl.clearColor(0.36, 0.67, 0.93, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-    // 전 세계를 플레이어 위치의 반대 방향으로 밀어 플레이어를 중앙(laneOffset)에 배치
-    const worldShiftX = -laneOffset
-
-    // [v6.7] Ground Rendering: 플레이어 위치(0)를 중심으로 무한 배경처럼 보이게 함
     mat4.identity(modelMatrix)
-    // Z축으로 플레이어와 함께 이동하는 것처럼 보이게 하려면?
-    // 아니면 그냥 거대한 판을 깔아두고 텍스처만 이동? 
-    // 여기서는 단순하게 플레이어 주변에 항상 있도록 Z 위치를 조정.
-    // Road samples go from z=14 to z=-...
-    // Center ground at z=-20 roughly?
-    mat4.translate(modelMatrix, modelMatrix, [worldShiftX, -0.05, -10])
+    mat4.translate(modelMatrix, modelMatrix, [0, -0.05, -10])
     drawMesh(groundMesh, modelMatrix)
 
-    for (let i = 0; i < state.roadSamples.length; i += 1) {
-      const sample = state.roadSamples[i]
-      const prev = state.roadSamples[Math.max(0, i - 2)]
-      const next = state.roadSamples[Math.min(i + 2, state.roadSamples.length - 1)]
+    updateRibbonGeometry(gl, ribbonGrassLeft, local, -grassOuter, -shoulderOuter, 0)
+    updateRibbonGeometry(gl, ribbonGrassRight, local, shoulderOuter, grassOuter, 0)
+    updateRibbonGeometry(gl, ribbonShoulderLeft, local, -shoulderOuter, -rumbleOuter, 0)
+    updateRibbonGeometry(gl, ribbonShoulderRight, local, rumbleOuter, shoulderOuter, 0)
+    updateRibbonGeometry(gl, ribbonRoad, local, -roadHalf, roadHalf, 0)
+    updateRumbleGeometry(gl, ribbonRumbleLeft, local, -rumbleOuter, -roadHalf, 0.08)
+    updateRumbleGeometry(gl, ribbonRumbleRight, local, roadHalf, rumbleOuter, 0.08)
 
-      // Blend neighboring centers to avoid segment-by-segment kinks.
-      const smoothCenterX = (prev.centerX * 0.27) + (sample.centerX * 0.46) + (next.centerX * 0.27)
-      const x = smoothCenterX + worldShiftX
-      const z = sample.z
+    mat4.identity(modelMatrix)
+    mat4.multiply(mvpMatrix, viewProjectionMatrix, modelMatrix)
+    gl.uniformMatrix4fv(mvpLocation, false, mvpMatrix)
 
-      // [v6.7] Calculate Angle for smooth connection
-      // 다음 세그먼트와의 X 차이를 이용해 회전각 계산
-      // next.centerX는 상대좌표가 아닐 수 있으므로 주의. smoothCenterX 간의 차이를 이용
-      const nextSmoothX = ((sample.centerX * 0.27) + (next.centerX * 0.46) + (state.roadSamples[Math.min(i + 3, state.roadSamples.length - 1)].centerX * 0.27)) + worldShiftX
-      const dx = nextSmoothX - x
-      const dz = -12.0 // SEGMENT_LENGTH? No, segment z difference is? 
-      // i goes -BACK to VISIBLE. z = 14 - i * SEGMENT_LENGTH.
-      // So next i has smaller z. z gap is -SEGMENT_LENGTH.
-      const segLen = 9 // Approximate segment length check
-      const angle = Math.atan2(dx, -segLen)
+    drawRibbon(gl, ribbonGrassLeft, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonGrassRight, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonShoulderLeft, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonShoulderRight, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonRoad, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonRumbleLeft, positionLocation, colorLocation)
+    drawRibbon(gl, ribbonRumbleRight, positionLocation, colorLocation)
 
-      // [v7.8] Remove layerY hack (caused gaps). Relies on mesh Y-offset for decimals.
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, roadMesh, x, z, angle)
-
-      const rumbleMesh = Math.floor(sample.segmentIndex / 4) % 2 === 0 ? rumbleRedMesh : rumbleWhiteMesh
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x - rumbleOffset, z, angle)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, rumbleMesh, x + rumbleOffset, z, angle)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x - shoulderOffset, z, angle)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, shoulderMesh, x + shoulderOffset, z, angle)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x - grassOffset, z, angle)
-      drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, grassMesh, x + grassOffset, z, angle)
-
-      if (sample.segmentIndex % 5 !== 0) {
-        drawSegmentBand(drawMesh, modelMatrix, 0, 0, 0, laneDashMesh, x, z, angle)
+    for (let i = 0; i < local.length; i += 1) {
+      const s = local[i]
+      if (s.i > 2 && s.segmentIndex % 5 !== 0) {
+        mat4.identity(modelMatrix)
+        mat4.translate(modelMatrix, modelMatrix, [s.x, 0.08, s.z])
+        mat4.rotateY(modelMatrix, modelMatrix, s.heading)
+        drawMesh(laneDashMesh, modelMatrix)
       }
     }
 
-    // Queue props for batch rendering
-    for (const prop of state.props) {
-      queueProp(prop, prop.x + worldShiftX, prop.z)
+    for (const prop of state.props || []) {
+      queueLocalProp(prop, basis)
     }
 
-    // Flush batches
     gl.useProgram(programInstanced)
     treeTrunkBatch.flush(viewProjectionMatrix)
     treeLeavesBatch.flush(viewProjectionMatrix)
@@ -377,33 +571,22 @@ export function createSceneRenderer(gl, reportError) {
     signPoleBatch.flush(viewProjectionMatrix)
     signBatch.flush(viewProjectionMatrix)
 
-    // 버스 및 UI 오브젝트 렌더링을 위해 다시 일반 셰이더 프로그램 활성화
     gl.useProgram(program)
+    drawLocalStopMarker(state.stopMarker, basis, state.nextStopDistance - state.distance)
 
-    // 유니폼 전송 재확인 (v6.4)
-    // ViewProjection은 drawMesh 내부에서 modelMatrix와 결합되어 u_mvp로 전송됨.
+    const carYaw = (state.renderCarYaw ?? state.carYaw ?? 0) * 0.45
+    const carRoll = (state.renderCarRoll ?? state.carRoll ?? 0) * 0.16
+    const carPitch = (state.renderPitch ?? state.pitch ?? 0) * 0.04
 
-    drawStopMarker(state.stopMarker, worldShiftX, state.nextStopDistance - state.distance)
-
-    // Bus Rendering (v3: Hierarchical / Parent-Child)
-    const busX = 0
-    const busZ = 8.1
-    const carYaw = state.carYaw * 0.45
-    const carRoll = state.carRoll * 0.16
-
-    // 1. Parent Matrix (Bus Body Base)
-    const busBaseMatrix = mat4.create()
     mat4.identity(busBaseMatrix)
-    mat4.translate(busBaseMatrix, busBaseMatrix, [busX, 0.58, busZ])
+    mat4.translate(busBaseMatrix, busBaseMatrix, [BUS_X, 0.58, BUS_Z])
     mat4.rotateY(busBaseMatrix, busBaseMatrix, carYaw)
     mat4.rotateZ(busBaseMatrix, busBaseMatrix, carRoll)
+    mat4.rotateX(busBaseMatrix, busBaseMatrix, carPitch)
 
-    // Draw Body using Base Matrix
     drawMesh(busBody, busBaseMatrix)
 
-    // Helper: Draw component relative to bus base
     function drawPart(mesh, offset, scale = [1, 1, 1], rotate = [0, 0, 0]) {
-      const partMatrix = mat4.create()
       mat4.copy(partMatrix, busBaseMatrix)
       mat4.translate(partMatrix, partMatrix, offset)
       if (rotate[0]) mat4.rotateX(partMatrix, partMatrix, rotate[0])
@@ -413,23 +596,20 @@ export function createSceneRenderer(gl, reportError) {
       drawMesh(mesh, partMatrix)
     }
 
-    // 2. Child Components (Body Parts)
     drawPart(busUpper, [0, 0.87, 0.1])
     drawPart(busRoof, [0, 1.44, 0.05])
     drawPart(busWindshield, [0, 0.74, -3.78])
     drawPart(busBumper, [0, -0.08, -3.72])
 
-    // 3. Child Components (Wheels)
     const wheelY = -0.15
-    for (const side of [-1, 1]) {
-      // 앞바퀴 (단륜, 조향 시 회전)
-      // [v6.5] Clipping 방지를 위해 바퀴 위치를 차체 바깥으로 조금 이동 (1.35 -> 1.45)
-      const frontSteer = state.steeringValue * 0.65
-      drawPart(wheel, [side * 1.45, wheelY, -2.4], [1, 1, 1], [0, frontSteer, Math.PI / 2])
+    const wheelSpin = (state.renderDistance ?? state.distance ?? 0) * 0.45
+    const steeringValue = state.renderSteeringValue ?? state.steeringValue ?? 0
 
-      // 뒷바퀴 (복륜/더블 타이어)
+    for (const side of [-1, 1]) {
+      const frontSteer = steeringValue * 0.65
+      drawPart(wheel, [side * 1.45, wheelY, -2.4], [1, 1, 1], [wheelSpin, frontSteer, Math.PI / 2])
       for (const dPos of [-0.2, 0.22]) {
-        drawPart(wheel, [side * 1.25 + (side * dPos), wheelY, 2.2], [1, 1, 1], [0, 0, Math.PI / 2])
+        drawPart(wheel, [side * 1.25 + side * dPos, wheelY, 2.2], [1, 1, 1], [wheelSpin, 0, Math.PI / 2])
       }
     }
 
@@ -444,6 +624,6 @@ export function createSceneRenderer(gl, reportError) {
   return {
     draw,
     roadWidth: 13.2,
-    roadLength: roadDepth * 80
+    roadLength: 5.2 * 80
   }
 }
