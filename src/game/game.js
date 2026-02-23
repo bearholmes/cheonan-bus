@@ -81,6 +81,9 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
   }
 
   function syncHud() {
+    if (hudRoot) {
+      hudRoot.classList.toggle('hidden', state.mode === 'menu')
+    }
     hud.setTimer(state.missionTime, state.mode, 's')
     hud.setTelemetry({
       speed: state.speed,

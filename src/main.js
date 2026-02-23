@@ -8,12 +8,17 @@ if (!app) {
 
 app.innerHTML = `
   <canvas id="game-canvas"></canvas>
-  <div id="start-overlay" class="overlay">
-    <div class="overlay-card">
-      <h1>천안 버스 · BUSDRIVE SHIFT</h1>
-      <p>정류장에 정차해 승객을 태우고 시간을 연장하세요.</p>
-      <p>조작: ↑ 가속 · ↓ 브레이크/후진 · ← → 조향 · F 전체화면</p>
-      <button id="start-btn" type="button">START SHIFT</button>
+  <div id="start-overlay" class="overlay overlay-start">
+    <div class="start-aura" aria-hidden="true"></div>
+    <div class="overlay-card overlay-card-start">
+      <h1>
+        <span class="start-title-ko">천안 버스</span>
+        <span class="start-title-en">BUSDRIVE SHIFT</span>
+      </h1>
+      <button id="start-btn" type="button">
+        <span>START SHIFT</span>
+        <small>ENTER / CLICK</small>
+      </button>
     </div>
   </div>
   <div id="end-overlay" class="overlay hidden">
