@@ -1,218 +1,141 @@
-import { mat4, vec3 } from '../math/mat.js'
-import { assertNoGLError, createProgram, drainGLErrors, getInstancedExt } from './gl.js'
-import { createCubeGeometry, createPlaneGeometry, createCylinderGeometry, createConeGeometry } from './geometry.js'
-import { bindMesh, createMesh, createInstanceBuffer, bindInstancedMesh } from './mesh.js'
+import * as THREE from 'three'
 
-const VERTEX_SHADER_SOURCE = `
-attribute vec3 a_pos;
-attribute vec3 a_col;
-uniform mat4 u_mvp;
+export function createSceneRenderer(canvas, reportError) {
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: false, // 성능을 위해 비활성화, FXAA 등 후처리가 필요하다면 추후 추가
+    powerPreference: 'high-performance'
+  })
+  renderer.setPixelRatio(1.0)
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
-varying vec3 v_col;
-varying float v_dist;
+  const scene = new THREE.Scene()
+  const fogColor = new THREE.Color(0.36, 0.67, 0.93)
+  scene.background = fogColor
+  scene.fog = new THREE.FogExp2(fogColor, 0.002)
 
-void main() {
-  vec4 pos = u_mvp * vec4(a_pos, 1.0);
-  gl_Position = pos;
-  v_col = a_col;
-  v_dist = pos.z;
-}
-`
+  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 700)
 
-const VERTEX_SHADER_INSTANCED_SOURCE = `
-attribute vec3 a_pos;
-attribute vec3 a_col;
-attribute mat4 a_model;
-uniform mat4 u_vp;
+  // 1. 조명 (사실적인 분위기 연출)
+  const ambientLight = new THREE.AmbientLight(0xdbe6f2, 0.6) // 하늘빛 환경광
+  scene.add(ambientLight)
 
-varying vec3 v_col;
-varying float v_dist;
+  const dirLight = new THREE.DirectionalLight(0xfff7e6, 1.2) // 따뜻한 태양광
+  dirLight.position.set(200, 300, -100)
+  dirLight.castShadow = true
+  dirLight.shadow.mapSize.width = 2048
+  dirLight.shadow.mapSize.height = 2048
+  dirLight.shadow.camera.near = 0.5
+  dirLight.shadow.camera.far = 800
+  dirLight.shadow.camera.left = -200
+  dirLight.shadow.camera.right = 200
+  dirLight.shadow.camera.top = 200
+  dirLight.shadow.camera.bottom = -200
+  dirLight.shadow.bias = -0.001
+  scene.add(dirLight)
 
-void main() {
-  vec4 pos = u_vp * a_model * vec4(a_pos, 1.0);
-  gl_Position = pos;
-  v_col = a_col;
-  v_dist = pos.z;
-}
-`
+  // 자주 쓰이는 재질 (PBR)
+  const materials = {
+    road: new THREE.MeshStandardMaterial({ color: 0x33353b, roughness: 0.8 }),
+    shoulder: new THREE.MeshStandardMaterial({ color: 0xd6cfb8, roughness: 0.9 }),
+    grass: new THREE.MeshStandardMaterial({ color: 0x2b7833, roughness: 1.0 }),
+    rumble: new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.9 }),
+    ground: new THREE.MeshStandardMaterial({ color: 0x24632b, roughness: 1.0 }),
+    lane: new THREE.MeshBasicMaterial({ color: 0xf2f2e6 }), // 빛에 영향을 받지 않도록
+    treeTrunk: new THREE.MeshStandardMaterial({ color: 0x4d331a, roughness: 0.9 }),
+    treeLeaves: new THREE.MeshStandardMaterial({ color: 0x26732e, roughness: 0.8 }),
+    tower: new THREE.MeshStandardMaterial({ color: 0x618fB3, roughness: 0.5 }),
+    sign: new THREE.MeshStandardMaterial({ color: 0xd1e6fa, roughness: 0.4 }),
+    signPole: new THREE.MeshStandardMaterial({ color: 0x2e3845, roughness: 0.6, metalness: 0.5 }),
+    stopPole: new THREE.MeshStandardMaterial({ color: 0x2b333d, roughness: 0.6 }),
+    stopBoard: new THREE.MeshStandardMaterial({ color: 0xf2db3b, roughness: 0.4 }),
+    stopBench: new THREE.MeshStandardMaterial({ color: 0x704d2e, roughness: 0.8 }),
+    stopBenchLeg: new THREE.MeshStandardMaterial({ color: 0x42382e, roughness: 0.6 }),
+    stopZone: new THREE.MeshStandardMaterial({ color: 0xf2ed59, roughness: 0.9 }),
+    stopZoneStripe: new THREE.MeshStandardMaterial({ color: 0x1a2129, roughness: 0.9 }),
+    stopBeacon: new THREE.MeshBasicMaterial({ color: 0xffd657 }), // 야간에도 빛나게 Basic
+    stopBeam: new THREE.MeshBasicMaterial({ color: 0xfa5940, transparent: true, opacity: 0.7 }),
+    stopPillar: new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.6 }),
 
-const FRAGMENT_SHADER_SOURCE = `
-precision mediump float;
-varying vec3 v_col;
-varying float v_dist;
-
-uniform vec3 u_fogColor;
-uniform float u_fogDensity;
-
-void main() {
-  float distXZ = max(0.0, v_dist);
-  float fogFactor = 1.0 - exp(-(distXZ * u_fogDensity));
-  fogFactor = clamp(fogFactor, 0.0, 1.0);
-  
-  gl_FragColor = vec4(mix(v_col, u_fogColor, fogFactor), 1.0);
-}
-`
-
-function createRibbon(gl, maxSegments, color) {
-  const vertexCapacity = (maxSegments + 1) * 2
-  const vertices = new Float32Array(vertexCapacity * 6)
-  const indices = new Uint16Array(maxSegments * 6)
-
-  for (let i = 0; i < maxSegments; i += 1) {
-    const a = i * 2
-    const b = a + 1
-    const c = a + 2
-    const d = a + 3
-    const idx = i * 6
-    indices[idx + 0] = a
-    indices[idx + 1] = c
-    indices[idx + 2] = b
-    indices[idx + 3] = b
-    indices[idx + 4] = c
-    indices[idx + 5] = d
+    // 버스 부품 (유리와 금속 느낌 강화)
+    busBody: new THREE.MeshStandardMaterial({ color: 0x1f9440, roughness: 0.4, metalness: 0.1 }),
+    busUpper: new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 }),
+    busWindow: new THREE.MeshStandardMaterial({ color: 0x2473a6, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.8 }), // 반사율 높은 유리
+    busRoof: new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.6 }),
+    busBumper: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }),
+    wheelRim: new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.5, metalness: 0.6 }),
+    wheelTire: new THREE.MeshStandardMaterial({ color: 0x0f0f12, roughness: 0.9 })
   }
 
-  const vertexBuffer = gl.createBuffer()
-  const indexBuffer = gl.createBuffer()
-  if (!vertexBuffer || !indexBuffer) {
-    throw new Error('Unable to allocate ribbon buffers.')
-  }
+  // 지형 초기화
+  const groundGeo = new THREE.PlaneGeometry(520, 520)
+  const groundMesh = new THREE.Mesh(groundGeo, materials.ground)
+  groundMesh.rotation.x = -Math.PI / 2
+  groundMesh.position.y = -0.25
+  groundMesh.receiveShadow = true
+  scene.add(groundMesh)
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer)
-  gl.bufferData(gl.ARRAY_BUFFER, vertices.byteLength, gl.DYNAMIC_DRAW)
+  // 2. 리본 버퍼(차도/인도) 동적 관리를 위한 헬퍼 클래스
+  class DynamicRibbon {
+    constructor(maxSegments, material) {
+      this.geometry = new THREE.BufferGeometry()
+      const maxVertices = (maxSegments + 1) * 2
+      const positions = new Float32Array(maxVertices * 3)
+      this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
 
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, indexBuffer)
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
-
-  return {
-    vertexBuffer,
-    indexBuffer,
-    vertices,
-    color,
-    indexCount: 0
-  }
-}
-
-function setRibbonVertex(v, base, x, y, z, color) {
-  v[base + 0] = x
-  v[base + 1] = y
-  v[base + 2] = z
-  v[base + 3] = color[0]
-  v[base + 4] = color[1]
-  v[base + 5] = color[2]
-}
-
-function updateRibbonGeometry(gl, ribbon, samples, offsetA, offsetB, y, colorFn = null) {
-  if (!samples || samples.length < 2) {
-    ribbon.indexCount = 0
-    return
-  }
-
-  for (let i = 0; i < samples.length; i += 1) {
-    const s = samples[i]
-    const ax = s.centerX + s.rightX * offsetA
-    const az = s.centerZ + s.rightZ * offsetA
-    const bx = s.centerX + s.rightX * offsetB
-    const bz = s.centerZ + s.rightZ * offsetB
-    const color = colorFn ? colorFn(s) : ribbon.color
-
-    const base = i * 12
-    setRibbonVertex(ribbon.vertices, base, ax, y, az, color)
-    setRibbonVertex(ribbon.vertices, base + 6, bx, y, bz, color)
-  }
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, ribbon.vertexBuffer)
-  gl.bufferSubData(gl.ARRAY_BUFFER, 0, ribbon.vertices.subarray(0, samples.length * 12))
-  ribbon.indexCount = (samples.length - 1) * 6
-}
-
-function drawRibbon(gl, ribbon, positionLocation, colorLocation) {
-  if (ribbon.indexCount <= 0) return
-
-  gl.bindBuffer(gl.ARRAY_BUFFER, ribbon.vertexBuffer)
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ribbon.indexBuffer)
-
-  gl.enableVertexAttribArray(positionLocation)
-  gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, false, 24, 0)
-  gl.enableVertexAttribArray(colorLocation)
-  gl.vertexAttribPointer(colorLocation, 3, gl.FLOAT, false, 24, 12)
-
-  gl.drawElements(gl.TRIANGLES, ribbon.indexCount, gl.UNSIGNED_SHORT, 0)
-}
-
-function isWorldVisible(worldX, worldZ, busX, busZ, forwardX, forwardZ, rightX, rightZ) {
-  const dx = worldX - busX
-  const dz = worldZ - busZ
-  const forward = dx * forwardX + dz * forwardZ
-  const lateral = dx * rightX + dz * rightZ
-  return forward > -90 && forward < 460 && Math.abs(lateral) < 240
-}
-
-export function createSceneRenderer(gl, reportError) {
-  const ext = getInstancedExt(gl)
-  if (!ext) {
-    console.warn('Angle_instanced_arrays not supported, performance may suffer.')
-  }
-
-  const program = createProgram(gl, VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
-  const positionLocation = gl.getAttribLocation(program, 'a_pos')
-  const colorLocation = gl.getAttribLocation(program, 'a_col')
-  const mvpLocation = gl.getUniformLocation(program, 'u_mvp')
-  const fogColorLocation = gl.getUniformLocation(program, 'u_fogColor')
-  const fogDensityLocation = gl.getUniformLocation(program, 'u_fogDensity')
-
-  const programInstanced = createProgram(gl, VERTEX_SHADER_INSTANCED_SOURCE, FRAGMENT_SHADER_SOURCE)
-  const positionLocI = gl.getAttribLocation(programInstanced, 'a_pos')
-  const colorLocI = gl.getAttribLocation(programInstanced, 'a_col')
-  const modelLocI = gl.getAttribLocation(programInstanced, 'a_model')
-  const vpLocI = gl.getUniformLocation(programInstanced, 'u_vp')
-  const fogColorLocI = gl.getUniformLocation(programInstanced, 'u_fogColor')
-  const fogDensityLocI = gl.getUniformLocation(programInstanced, 'u_fogDensity')
-
-  if (positionLocation < 0 || colorLocation < 0 || !mvpLocation) {
-    throw new Error('Shader attribute/uniform lookup failed.')
-  }
-
-  function createBatch(mesh, initialCapacity = 256) {
-    const data = new Float32Array(initialCapacity * 16)
-    const instanceBuffer = createInstanceBuffer(gl, data, 16)
-    const attributes = [{ buffer: instanceBuffer, location: modelLocI, numComponents: 16 }]
-
-    return {
-      mesh,
-      data,
-      count: 0,
-      instanceBuffer,
-      attributes,
-      ensureCapacity(needed) {
-        if (this.data.length / 16 < needed) {
-          const next = new Float32Array(Math.max(needed, this.data.length * 2) * 16)
-          next.set(this.data)
-          this.data = next
-        }
-      },
-      add(modelMatrix) {
-        if (this.count * 16 + 16 > this.data.length) this.ensureCapacity(this.count + 64)
-        this.data.set(modelMatrix, this.count * 16)
-        this.count += 1
-      },
-      flush(viewProjectionMatrix) {
-        if (this.count === 0) return
-
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer.buffer)
-        gl.bufferData(gl.ARRAY_BUFFER, this.data.subarray(0, this.count * 16), gl.DYNAMIC_DRAW)
-
-        bindInstancedMesh(gl, ext, this.mesh, positionLocI, colorLocI, this.attributes)
-        gl.uniformMatrix4fv(vpLocI, false, viewProjectionMatrix)
-
-        if (ext) {
-          ext.drawElementsInstancedANGLE(gl.TRIANGLES, this.mesh.indexCount, gl.UNSIGNED_SHORT, 0, this.count)
-        }
-
-        this.count = 0
+      const indices = new Array(maxSegments * 6)
+      for (let i = 0; i < maxSegments; i++) {
+        const a = i * 2, b = a + 1, c = a + 2, d = a + 3
+        const idx = i * 6
+        indices[idx] = a; indices[idx + 1] = c; indices[idx + 2] = b
+        indices[idx + 3] = b; indices[idx + 4] = c; indices[idx + 5] = d
       }
+      this.geometry.setIndex(indices)
+      this.geometry.setDrawRange(0, 0)
+      this.geometry.computeVertexNormals() // 실시간 조명 적용을 위해 필요
+
+      this.mesh = new THREE.Mesh(this.geometry, material)
+      this.mesh.receiveShadow = true
+      // scene.add(this.mesh)
+    }
+
+    update(samples, offsetA, offsetB, yPos) {
+      if (!samples || samples.length < 2) {
+        this.geometry.setDrawRange(0, 0)
+        return
+      }
+
+      const positions = this.geometry.attributes.position.array
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i]
+        const ax = s.centerX + s.rightX * offsetA
+        const az = s.centerZ + s.rightZ * offsetA
+        const bx = s.centerX + s.rightX * offsetB
+        const bz = s.centerZ + s.rightZ * offsetB
+
+        const base = i * 6
+        positions[base] = ax; positions[base + 1] = yPos; positions[base + 2] = az
+        positions[base + 3] = bx; positions[base + 4] = yPos; positions[base + 5] = bz
+      }
+
+      this.geometry.attributes.position.needsUpdate = true
+      this.geometry.computeVertexNormals()
+      this.geometry.setDrawRange(0, (samples.length - 1) * 6)
     }
   }
+
+  const maxSegments = 600
+  const ribbons = {
+    road: new DynamicRibbon(maxSegments, materials.road),
+    shoulderL: new DynamicRibbon(maxSegments, materials.shoulder),
+    shoulderR: new DynamicRibbon(maxSegments, materials.shoulder),
+    grassL: new DynamicRibbon(maxSegments, materials.grass),
+    grassR: new DynamicRibbon(maxSegments, materials.grass),
+    rumbleL: new DynamicRibbon(maxSegments, materials.rumble),
+    rumbleR: new DynamicRibbon(maxSegments, materials.rumble),
+  }
+  Object.values(ribbons).forEach(r => scene.add(r.mesh))
 
   const roadWidth = 19.2
   const rumbleWidth = 2.1
@@ -224,161 +147,115 @@ export function createSceneRenderer(gl, reportError) {
   const shoulderOuter = rumbleOuter + shoulderWidth
   const grassOuter = shoulderOuter + grassWidth
 
-  const maxSegments = 600
-  const ribbonRoad = createRibbon(gl, maxSegments, [0.2, 0.21, 0.23])
-  const ribbonShoulderLeft = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
-  const ribbonShoulderRight = createRibbon(gl, maxSegments, [0.84, 0.81, 0.72])
-  const ribbonGrassLeft = createRibbon(gl, maxSegments, [0.17, 0.47, 0.2])
-  const ribbonGrassRight = createRibbon(gl, maxSegments, [0.17, 0.47, 0.2])
-  const ribbonRumbleLeft = createRibbon(gl, maxSegments, [0.72, 0.72, 0.72])
-  const ribbonRumbleRight = createRibbon(gl, maxSegments, [0.72, 0.72, 0.72])
+  // 차선 대쉬
+  const laneGeo = new THREE.PlaneGeometry(0.25, 2.4)
+  laneGeo.rotateX(-Math.PI / 2) // 땅을 보게
+  let laneInstancedMesh = null
 
-  const groundMesh = createMesh(gl, createPlaneGeometry(520, 520, -0.25, [0.14, 0.39, 0.17]))
-  const laneDashMesh = createMesh(gl, createPlaneGeometry(0.25, 2.4, 0.08, [0.95, 0.95, 0.9]))
-
-  const treeTrunkMesh = createMesh(gl, createCylinderGeometry(0.3, 0.4, 1.2, 6, [0.3, 0.2, 0.1]))
-  const treeLeavesMesh = createMesh(gl, createConeGeometry(2.2, 3.5, 7, [0.15, 0.45, 0.18]))
-  const towerMesh = createMesh(gl, createCubeGeometry(1.4, 5.1, 1.4, [0.38, 0.56, 0.7]))
-  const signMesh = createMesh(gl, createCubeGeometry(2.6, 1.3, 0.26, [0.82, 0.9, 0.98]))
-  const signPoleMesh = createMesh(gl, createCylinderGeometry(0.12, 0.12, 1.8, 6, [0.18, 0.22, 0.27]))
-
-  const stopPoleMesh = createMesh(gl, createCylinderGeometry(0.1, 0.1, 1.95, 6, [0.17, 0.2, 0.24]))
-  const stopBoardMesh = createMesh(gl, createCubeGeometry(0.68, 0.72, 0.1, [0.95, 0.86, 0.23]))
-  const stopBenchMesh = createMesh(gl, createCubeGeometry(1.25, 0.2, 0.42, [0.44, 0.3, 0.18]))
-  const stopBenchLegMesh = createMesh(gl, createCubeGeometry(0.12, 0.34, 0.12, [0.26, 0.22, 0.18]))
-  const stopZoneMesh = createMesh(gl, createPlaneGeometry(5.2, 7.8, 0.015, [0.95, 0.93, 0.35]))
-  const stopZoneStripeMesh = createMesh(gl, createPlaneGeometry(4.8, 6.9, 0.02, [0.1, 0.13, 0.16]))
-  const stopBeaconMesh = createMesh(gl, createCubeGeometry(0.6, 0.6, 0.6, [1, 0.84, 0.34]))
-  const stopBeamMesh = createMesh(gl, createCubeGeometry(0.95, 8.4, 0.95, [0.98, 0.35, 0.25]))
-  const stopPillarMesh = createMesh(gl, createCylinderGeometry(0.14, 0.14, 2.4, 6, [0.12, 0.16, 0.2]))
-
-  const busBody = createMesh(gl, createCubeGeometry(3.2, 1.22, 7.05, [0.2, 0.62, 0.28]))
-  const busUpper = createMesh(gl, createCubeGeometry(3.05, 1.04, 5.9, [0.13, 0.28, 0.2]))
-  const busRoof = createMesh(gl, createCubeGeometry(2.88, 0.22, 6.45, [0.78, 0.82, 0.84]))
-  const busWindshield = createMesh(gl, createCubeGeometry(2.56, 0.72, 0.16, [0.53, 0.82, 0.95]))
-  const busBumper = createMesh(gl, createCubeGeometry(2.86, 0.28, 0.34, [0.14, 0.16, 0.2]))
-  const wheel = createMesh(gl, createCylinderGeometry(0.45, 0.45, 0.45, 16, [0.06, 0.06, 0.07]))
-
-  const treeTrunkBatch = createBatch(treeTrunkMesh)
-  const treeLeavesBatch = createBatch(treeLeavesMesh)
-  const towerBatch = createBatch(towerMesh)
-  const signPoleBatch = createBatch(signPoleMesh)
-  const signBatch = createBatch(signMesh)
-
-  const projectionMatrix = mat4.create()
-  const viewMatrix = mat4.create()
-  const viewProjectionMatrix = mat4.create()
-  const modelMatrix = mat4.create()
-  const mvpMatrix = mat4.create()
-  const busBaseMatrix = mat4.create()
-  const partMatrix = mat4.create()
-
-  const eye = vec3.create()
-  const target = vec3.create()
-  const up = vec3.fromValues(0, 1, 0)
-
-  function drawMesh(mesh, model) {
-    bindMesh(gl, mesh, positionLocation, colorLocation)
-    mat4.multiply(mvpMatrix, viewProjectionMatrix, model)
-    gl.uniformMatrix4fv(mvpLocation, false, mvpMatrix)
-    gl.drawElements(gl.TRIANGLES, mesh.indexCount, gl.UNSIGNED_SHORT, 0)
+  // 3. 인스턴싱 최적화 헬퍼 (배경 오브젝트들)
+  const MAX_INSTANCES = 500
+  function createPropInstanced(geo, mat) {
+    const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES)
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    scene.add(mesh)
+    return mesh
   }
 
-  function queueProp(prop, busX, busZ, forwardX, forwardZ, rightX, rightZ) {
-    if (!isWorldVisible(prop.x, prop.z, busX, busZ, forwardX, forwardZ, rightX, rightZ)) return
-
-    const scale = prop.scale
-
-    if (prop.kind === 'tree') {
-      mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [prop.x, 0.6 * scale, prop.z])
-      mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
-      treeTrunkBatch.add(modelMatrix)
-
-      mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [prop.x, 2.2 * scale, prop.z])
-      mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
-      treeLeavesBatch.add(modelMatrix)
-      return
-    }
-
-    if (prop.kind === 'tower') {
-      mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [prop.x, 2.2 * scale, prop.z])
-      mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
-      towerBatch.add(modelMatrix)
-      return
-    }
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [prop.x, 0.95 * scale, prop.z])
-    mat4.rotateY(modelMatrix, modelMatrix, prop.heading || 0)
-    mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
-    signPoleBatch.add(modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [prop.x, 1.9 * scale, prop.z])
-    mat4.rotateY(modelMatrix, modelMatrix, prop.heading || 0)
-    mat4.scale(modelMatrix, modelMatrix, [scale, scale, scale])
-    signBatch.add(modelMatrix)
+  const propMeshes = {
+    treeTrunk: createPropInstanced(new THREE.CylinderGeometry(0.3, 0.4, 1.2, 8), materials.treeTrunk),
+    treeLeaves: createPropInstanced(new THREE.ConeGeometry(2.2, 3.5, 8), materials.treeLeaves),
+    tower: createPropInstanced(new THREE.BoxGeometry(1.4, 5.1, 1.4), materials.tower),
+    signPole: createPropInstanced(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 8), materials.signPole),
+    sign: createPropInstanced(new THREE.BoxGeometry(2.6, 1.3, 0.26), materials.sign),
   }
 
-  function drawStopMarker(stopMarker, distanceToStop, busX, busZ, forwardX, forwardZ, rightX, rightZ) {
-    if (!stopMarker) return
-    if (!isWorldVisible(stopMarker.x, stopMarker.z, busX, busZ, forwardX, forwardZ, rightX, rightZ)) return
+  // 4. 버스 조립 (Group 기반) - 진짜 버스 비율에 맞춘 Box 구성
+  const busGroup = new THREE.Group()
 
-    const near = Math.abs(distanceToStop) < 60
-    const flash = near ? 1.2 : 1
-
-    const heading = stopMarker.heading || 0
-    const poleX = stopMarker.x
-    const poleZ = stopMarker.z
-    const zoneX = stopMarker.zoneX ?? stopMarker.centerX
-    const zoneZ = stopMarker.zoneZ ?? stopMarker.centerZ
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.02, zoneZ])
-    mat4.rotateY(modelMatrix, modelMatrix, heading)
-    drawMesh(stopZoneMesh, modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 0.025, zoneZ])
-    mat4.rotateY(modelMatrix, modelMatrix, heading)
-    drawMesh(stopZoneStripeMesh, modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [poleX, 1.0, poleZ])
-    drawMesh(stopPoleMesh, modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 1.25, poleZ - 0.4])
-    drawMesh(stopPillarMesh, modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [poleX, 2.15, poleZ])
-    drawMesh(stopBoardMesh, modelMatrix)
-
-    const benchX = stopMarker.side === 'right' ? poleX - 1.1 : poleX + 1.1
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [benchX, 0.45, poleZ + 0.2])
-    drawMesh(stopBenchMesh, modelMatrix)
-
-    for (const leg of [-0.45, 0.45]) {
-      mat4.identity(modelMatrix)
-      mat4.translate(modelMatrix, modelMatrix, [benchX + leg, 0.22, poleZ + 0.2])
-      drawMesh(stopBenchLegMesh, modelMatrix)
-    }
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [poleX, 2.75, poleZ])
-    mat4.scale(modelMatrix, modelMatrix, [flash, flash, flash])
-    drawMesh(stopBeaconMesh, modelMatrix)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [zoneX, 4.5, zoneZ])
-    mat4.scale(modelMatrix, modelMatrix, [near ? 1.3 : 1, 1, near ? 1.3 : 1])
-    drawMesh(stopBeamMesh, modelMatrix)
+  function addPart(geo, mat, x, y, z, castShadow = true) {
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.set(x, y, z)
+    mesh.castShadow = castShadow
+    mesh.receiveShadow = true
+    busGroup.add(mesh)
+    return mesh
   }
+
+  // 버스 원점을 지표면에 가깝게 내려 공중부양 해결
+  addPart(new THREE.BoxGeometry(3.0, 1.0, 9.5), materials.busBody, 0, 0.4, 0)
+  addPart(new THREE.BoxGeometry(3.05, 1.0, 9.3), materials.busWindow, 0, 1.4, 0, false)
+  addPart(new THREE.BoxGeometry(2.9, 1.3, 9.5), materials.busUpper, 0, 1.35, 0)
+  addPart(new THREE.BoxGeometry(2.9, 0.2, 9.3), materials.busRoof, 0, 2.1, 0)
+  addPart(new THREE.BoxGeometry(3.1, 0.3, 0.3), materials.busBumper, 0, -0.05, -4.75)
+  addPart(new THREE.BoxGeometry(3.1, 0.3, 0.3), materials.busBumper, 0, -0.05, 4.75)
+
+  // 바퀴 (동적 회전과 조향이 필요하므로 Group으로 별도 관리)
+  const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.5, 16)
+  wheelGeo.rotateZ(Math.PI / 2) // 실린더를 뉘여서 바퀴 모양으로
+  const wheels = []
+
+  function createWheel(x, y, z) {
+    const anchor = new THREE.Group() // 조향 회전을 위한 앵커 그룹
+    anchor.position.set(x, y, z)
+
+    const w = new THREE.Mesh(wheelGeo, materials.wheelTire)
+    w.castShadow = true
+    anchor.add(w)
+
+    busGroup.add(anchor)
+    wheels.push({ anchor, mesh: w })
+  }
+
+  const wheelY = -0.15 // 바닥에 붙도록 높이 조정 (공중부양 픽스)
+  // 전륜 (조향 가능)
+  createWheel(1.5, wheelY, -3.2)
+  createWheel(-1.5, wheelY, -3.2)
+  // 후륜 (이중 타이어)
+  createWheel(1.4, wheelY, 3.0); createWheel(1.8, wheelY, 3.0)
+  createWheel(-1.4, wheelY, 3.0); createWheel(-1.8, wheelY, 3.0)
+
+  scene.add(busGroup)
+
+  // 정류장 (항상 1개만 활성화된다고 가정, 정적 Mesh로 구성하여 위치만 변경)
+  const stopGroup = new THREE.Group()
+  const sAdd = (geo, mat, x, y, z) => {
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.set(x, y, z)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    stopGroup.add(mesh)
+    return mesh
+  }
+
+  const stopZoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 7.8), materials.stopZone)
+  stopZoneMesh.rotation.x = -Math.PI / 2
+  stopZoneMesh.position.y = 0.015
+  stopZoneMesh.receiveShadow = true
+  stopGroup.add(stopZoneMesh)
+
+  const stopZoneStripeMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 6.9), materials.stopZoneStripe)
+  stopZoneStripeMesh.rotation.x = -Math.PI / 2
+  stopZoneStripeMesh.position.y = 0.02
+  stopZoneStripeMesh.receiveShadow = true
+  stopGroup.add(stopZoneStripeMesh)
+
+  const stopPole = sAdd(new THREE.CylinderGeometry(0.1, 0.1, 1.95, 8), materials.stopPole, 0, 1.0, 0)
+  const stopPillar = sAdd(new THREE.CylinderGeometry(0.14, 0.14, 2.4, 8), materials.stopPillar, 0, 1.25, -0.4)
+  const stopBoard = sAdd(new THREE.BoxGeometry(0.68, 0.72, 0.1), materials.stopBoard, 0, 2.15, 0)
+  const stopBench = sAdd(new THREE.BoxGeometry(1.25, 0.2, 0.42), materials.stopBench, 1.1, 0.45, 0.2) // 기본위치, 동적수정
+  const stopBenchL1 = sAdd(new THREE.BoxGeometry(0.12, 0.34, 0.12), materials.stopBenchLeg, 1.1 - 0.45, 0.22, 0.2)
+  const stopBenchL2 = sAdd(new THREE.BoxGeometry(0.12, 0.34, 0.12), materials.stopBenchLeg, 1.1 + 0.45, 0.22, 0.2)
+  const stopBeacon = sAdd(new THREE.BoxGeometry(0.6, 0.6, 0.6), materials.stopBeacon, 0, 2.75, 0)
+  const stopBeam = sAdd(new THREE.BoxGeometry(0.95, 8.4, 0.95), materials.stopBeam, 0, 4.5, 0)
+
+  scene.add(stopGroup)
+
+  const dummyMatrix = new THREE.Matrix4()
+  const posVec = new THREE.Vector3()
+  const quat = new THREE.Quaternion()
+  const scaleVec = new THREE.Vector3()
 
   function draw(state) {
     const samples = state.roadSamples || []
@@ -396,139 +273,165 @@ export function createSceneRenderer(gl, reportError) {
 
     const forwardX = Math.sin(busHeading)
     const forwardZ = Math.cos(busHeading)
-    const rightX = forwardZ
-    const rightZ = -forwardX
 
-    const steeringValue = state.renderSteeringValue ?? state.steeringValue ?? 0
+    // 카메라 설정
+    // 카메라: 지나치게 휙휙 도는 현상 개선 및 뒤에서 부드럽게 추격
+    const camAlpha = 0.1
+    const targetCamX = busX - forwardX * 18.0
+    const targetCamZ = busZ - forwardZ * 18.0
 
-    const lookForwardX = forwardX
-    const lookForwardZ = forwardZ
-    const lookRightX = lookForwardZ
-    const lookRightZ = -lookForwardX
+    // 단순 Lerp로 카메라 회전이 어지러운 현상 보완, 하지만 즉시 할당으로 방향 충돌 방지
+    camera.position.set(targetCamX, 6.0, targetCamZ)
+    camera.lookAt(busX + forwardX * 30, 0.8, busZ + forwardZ * 30)
 
-    eye[0] = busX - lookForwardX * 16.8
-    eye[1] = 5.3
-    eye[2] = busZ - lookForwardZ * 16.8
+    // 그림자 카메라 초점 변경
+    dirLight.position.set(busX + 60, 150, busZ - 30)
+    dirLight.target.position.set(busX, 0, busZ)
+    dirLight.target.updateMatrixWorld()
 
-    target[0] = busX + lookForwardX * 40
-    target[1] = 0.95
-    target[2] = busZ + lookForwardZ * 40
+    // 1. 리본 업데이트
+    ribbons.road.update(samples, -roadHalf, roadHalf, 0)
+    ribbons.shoulderL.update(samples, -shoulderOuter, -rumbleOuter, 0)
+    ribbons.shoulderR.update(samples, rumbleOuter, shoulderOuter, 0)
+    ribbons.grassL.update(samples, -grassOuter, -shoulderOuter, 0)
+    ribbons.grassR.update(samples, shoulderOuter, grassOuter, 0)
+    ribbons.rumbleL.update(samples, -rumbleOuter, -roadHalf, 0.08)
+    ribbons.rumbleR.update(samples, roadHalf, rumbleOuter, 0.08)
 
-    const aspect = gl.canvas.width / gl.canvas.height
-    mat4.perspective(projectionMatrix, (45 * Math.PI) / 180, aspect, 0.1, 700)
-    mat4.lookAt(viewMatrix, eye, target, up)
-    mat4.multiply(viewProjectionMatrix, projectionMatrix, viewMatrix)
-
-    const fogColor = [0.36, 0.67, 0.93] // Restore standard clear sky color
-    const fogDensity = 0.002
-
-    gl.useProgram(program)
-    gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1)
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-
-    gl.uniform3fv(fogColorLocation, fogColor)
-    gl.uniform1f(fogDensityLocation, fogDensity)
-
-    mat4.identity(modelMatrix)
-    mat4.translate(modelMatrix, modelMatrix, [busX, -0.05, busZ - 10])
-    drawMesh(groundMesh, modelMatrix)
-
-    updateRibbonGeometry(gl, ribbonRoad, samples, -roadHalf, roadHalf, 0)
-    updateRibbonGeometry(gl, ribbonShoulderLeft, samples, -shoulderOuter, -rumbleOuter, 0)
-    updateRibbonGeometry(gl, ribbonShoulderRight, samples, rumbleOuter, shoulderOuter, 0)
-    updateRibbonGeometry(gl, ribbonGrassLeft, samples, -grassOuter, -shoulderOuter, 0)
-    updateRibbonGeometry(gl, ribbonGrassRight, samples, shoulderOuter, grassOuter, 0)
-    updateRibbonGeometry(gl, ribbonRumbleLeft, samples, -rumbleOuter, -roadHalf, 0.08)
-    updateRibbonGeometry(gl, ribbonRumbleRight, samples, roadHalf, rumbleOuter, 0.08)
-
-    mat4.identity(modelMatrix)
-    mat4.multiply(mvpMatrix, viewProjectionMatrix, modelMatrix)
-    gl.uniformMatrix4fv(mvpLocation, false, mvpMatrix)
-
-    drawRibbon(gl, ribbonGrassLeft, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonGrassRight, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonShoulderLeft, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonShoulderRight, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonRoad, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonRumbleLeft, positionLocation, colorLocation)
-    drawRibbon(gl, ribbonRumbleRight, positionLocation, colorLocation)
-
-    for (let i = 0; i < samples.length; i += 1) {
+    // 2. 차선 업데이트 (InstancedMesh 재생성 방식. 차선 개수가 많지 않으므로 매 프레임 업데이트)
+    let dashCount = 0
+    for (let i = 0; i < samples.length; i++) {
       const s = samples[i]
-      if (s.i > 2 && s.segmentIndex % 5 !== 0) {
-        mat4.identity(modelMatrix)
-        mat4.translate(modelMatrix, modelMatrix, [s.centerX, 0.08, s.centerZ])
-        mat4.rotateY(modelMatrix, modelMatrix, s.heading)
-        drawMesh(laneDashMesh, modelMatrix)
+      if (s.i > 2 && s.segmentIndex % 5 !== 0) dashCount++
+    }
+
+    if (laneInstancedMesh) {
+      scene.remove(laneInstancedMesh)
+      laneInstancedMesh.dispose()
+    }
+    if (dashCount > 0) {
+      laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.lane, dashCount)
+      let idx = 0
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i]
+        if (s.i > 2 && s.segmentIndex % 5 !== 0) {
+          dummyMatrix.identity()
+          dummyMatrix.makeRotationY(-s.heading)
+          dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
+          laneInstancedMesh.setMatrixAt(idx++, dummyMatrix)
+        }
+      }
+      laneInstancedMesh.instanceMatrix.needsUpdate = true
+      scene.add(laneInstancedMesh)
+    }
+
+    // 3. 배경 프랍 배치
+    const props = state.props || []
+    let counts = { treeTrunk: 0, treeLeaves: 0, tower: 0, signPole: 0, sign: 0 }
+
+    for (const prop of props) {
+      // 카메라 뒤 멀리 있는건 Culling
+      const dx = prop.x - busX; const dz = prop.z - busZ
+      const forwardDist = dx * forwardX + dz * forwardZ
+      if (forwardDist < -90 || forwardDist > 460) continue
+
+      const s = prop.scale
+      scaleVec.set(s, s, s)
+
+      if (prop.kind === 'tree') {
+        if (counts.treeTrunk < MAX_INSTANCES) {
+          dummyMatrix.compose(posVec.set(prop.x, 0.6 * s, prop.z), quat.identity(), scaleVec)
+          propMeshes.treeTrunk.setMatrixAt(counts.treeTrunk++, dummyMatrix)
+          dummyMatrix.compose(posVec.set(prop.x, 2.2 * s, prop.z), quat.identity(), scaleVec)
+          propMeshes.treeLeaves.setMatrixAt(counts.treeLeaves++, dummyMatrix)
+        }
+      } else if (prop.kind === 'tower') {
+        if (counts.tower < MAX_INSTANCES) {
+          dummyMatrix.compose(posVec.set(prop.x, 2.2 * s, prop.z), quat.identity(), scaleVec)
+          propMeshes.tower.setMatrixAt(counts.tower++, dummyMatrix)
+        }
+      } else {
+        // 표지판
+        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -(prop.heading || 0))
+        if (counts.signPole < MAX_INSTANCES) {
+          dummyMatrix.compose(posVec.set(prop.x, 0.95 * s, prop.z), quat, scaleVec)
+          propMeshes.signPole.setMatrixAt(counts.signPole++, dummyMatrix)
+          dummyMatrix.compose(posVec.set(prop.x, 1.9 * s, prop.z), quat, scaleVec)
+          propMeshes.sign.setMatrixAt(counts.sign++, dummyMatrix)
+        }
       }
     }
 
-    for (const prop of state.props || []) {
-      queueProp(prop, busX, busZ, forwardX, forwardZ, rightX, rightZ)
+    for (let key in counts) {
+      propMeshes[key].count = counts[key]
+      propMeshes[key].instanceMatrix.needsUpdate = true
     }
 
-    gl.useProgram(programInstanced)
-    gl.uniform3fv(fogColorLocI, fogColor)
-    gl.uniform1f(fogDensityLocI, fogDensity)
-
-    treeTrunkBatch.flush(viewProjectionMatrix)
-    treeLeavesBatch.flush(viewProjectionMatrix)
-    towerBatch.flush(viewProjectionMatrix)
-    signPoleBatch.flush(viewProjectionMatrix)
-    signBatch.flush(viewProjectionMatrix)
-
-    gl.useProgram(program)
-    drawStopMarker(state.stopMarker, state.nextStopDistance - state.distance, busX, busZ, forwardX, forwardZ, rightX, rightZ)
-
-    // Bus mesh faces local -Z, while movement forward is +Z in world at yaw=0.
-    // Add PI so visual front matches physical forward direction.
-    const carYaw = busHeading + Math.PI
+    // 4. 버스 배치 및 바퀴 조향
+    // 4. 버스 배치 및 바퀴 조향
+    const carYaw = -busHeading // Three.js 카메라 기준으로 반전 (카메라가 도는 문제 해결)
     const carRoll = (state.renderCarRoll ?? state.carRoll ?? 0) * 0.18
     const carPitch = (state.renderPitch ?? state.pitch ?? 0) * 0.07
 
-    mat4.identity(busBaseMatrix)
-    mat4.translate(busBaseMatrix, busBaseMatrix, [busX, 0.58, busZ])
-    mat4.rotateY(busBaseMatrix, busBaseMatrix, carYaw)
-    mat4.rotateZ(busBaseMatrix, busBaseMatrix, carRoll)
-    mat4.rotateX(busBaseMatrix, busBaseMatrix, carPitch)
-    drawMesh(busBody, busBaseMatrix)
+    busGroup.position.set(busX, 0.35, busZ) // 지면 밀착
+    busGroup.rotation.set(carPitch, carYaw, carRoll, 'YXZ')
 
-    function drawPart(mesh, offset, scale = [1, 1, 1], rotate = [0, 0, 0]) {
-      mat4.copy(partMatrix, busBaseMatrix)
-      mat4.translate(partMatrix, partMatrix, offset)
-      if (rotate[0]) mat4.rotateX(partMatrix, partMatrix, rotate[0])
-      if (rotate[1]) mat4.rotateY(partMatrix, partMatrix, rotate[1])
-      if (rotate[2]) mat4.rotateZ(partMatrix, partMatrix, rotate[2])
-      mat4.scale(partMatrix, partMatrix, scale)
-      drawMesh(mesh, partMatrix)
+    const steeringValue = state.renderSteeringValue ?? state.steeringValue ?? 0
+    const wheelSpin = -(state.renderDistance ?? state.distance ?? 0) * 0.45
+    const frontSteer = steeringValue * 0.6 // 실제 조향 각도로 스테어링
+
+    // 조향(Y축)과 굴러감(X축)을 분리하여 축 꼬임 방지
+    wheels[0].anchor.rotation.y = frontSteer
+    wheels[1].anchor.rotation.y = frontSteer
+
+    wheels.forEach(w => w.mesh.rotation.x = wheelSpin)
+
+    // 5. 정류장
+    const marker = state.stopMarker
+    const stopDistance = state.nextStopDistance - state.distance
+    if (marker && Math.abs(stopDistance) < 500) {
+      stopGroup.visible = true
+
+      const zoneX = marker.zoneX ?? marker.centerX
+      const zoneZ = marker.zoneZ ?? marker.centerZ
+      const heading = marker.heading || 0
+
+      stopZoneMesh.position.set(zoneX, 0.015, zoneZ)
+      stopZoneMesh.rotation.z = -heading
+      stopZoneStripeMesh.position.set(zoneX, 0.02, zoneZ)
+      stopZoneStripeMesh.rotation.z = -heading
+
+      stopPole.position.set(marker.x, 1.0, marker.z)
+      stopPillar.position.set(zoneX, 1.25, marker.z - 0.4)
+      stopBoard.position.set(marker.x, 2.15, marker.z)
+
+      const benchX = marker.side === 'right' ? marker.x - 1.1 : marker.x + 1.1
+      stopBench.position.set(benchX, 0.45, marker.z + 0.2)
+      stopBenchL1.position.set(benchX - 0.45, 0.22, marker.z + 0.2)
+      stopBenchL2.position.set(benchX + 0.45, 0.22, marker.z + 0.2)
+
+      stopBeacon.position.set(marker.x, 2.75, marker.z)
+      stopBeam.position.set(zoneX, 4.5, marker.z)
+
+      const near = Math.abs(stopDistance) < 60
+      const flash = near ? 1.2 : 1.0
+      stopBeacon.scale.set(flash, flash, flash)
+      stopBeam.scale.set(near ? 1.3 : 1, 1, near ? 1.3 : 1)
+      materials.stopBeam.opacity = near ? 0.9 : 0.4
+    } else {
+      stopGroup.visible = false
     }
 
-    drawPart(busUpper, [0, 0.87, 0.1])
-    drawPart(busRoof, [0, 1.44, 0.05])
-    drawPart(busWindshield, [0, 0.74, -3.78])
-    drawPart(busBumper, [0, -0.08, -3.72])
-
-    const wheelY = -0.15
-    const wheelSpin = (state.renderDistance ?? state.distance ?? 0) * 0.45
-
-    for (const side of [-1, 1]) {
-      const frontSteer = steeringValue * 0.35
-      drawPart(wheel, [side * 1.45, wheelY, -2.4], [1, 1, 1], [wheelSpin, frontSteer, Math.PI / 2])
-      for (const dPos of [-0.2, 0.22]) {
-        drawPart(wheel, [side * 1.25 + side * dPos, wheelY, 2.2], [1, 1, 1], [wheelSpin, 0, Math.PI / 2])
-      }
-    }
-
-    const drawErrors = drainGLErrors(gl)
-    if (drawErrors.length > 0) {
-      reportError(`WebGL draw error: ${drawErrors.join(', ')}`)
+    try {
+      renderer.render(scene, camera)
+    } catch (e) {
+      reportError("Renderer Error: " + e.message)
     }
   }
 
-  assertNoGLError(gl, 'scene initialization')
-
   return {
     draw,
+    renderer,
     roadWidth: 13.2,
     roadLength: 5.2 * 80
   }

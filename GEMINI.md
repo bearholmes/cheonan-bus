@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-**BusDriveVite-prod** (also known as "Cheonan Bus" or "천안 버스") is a 3D bus driving simulation game built with **Pure WebGL** and **Vanilla JavaScript**, using **Vite** as the build tool.
+**BusDriveVite-prod** (also known as "Cheonan Bus" or "천안 버스") is a 3D bus driving simulation game built with **WebGL** and **JavaScript**, using **Vite** as the build tool.
 
-The game focuses on driving a bus through a course, picking up passengers at designated stops within a time limit. It features a custom 3D rendering engine written from scratch (no Three.js/Babylon.js) and a fixed-timestep game loop with interpolation for smooth physics.
+The game focuses on driving a bus through a course, picking up passengers at designated stops within a time limit. It features a 3D rendering engine built with **Three.js (r183)** and a fixed-timestep game loop with interpolation for smooth physics.
 
 ### Key Technologies
--   **Frontend:** Vanilla JavaScript (ESM)
+-   **Frontend:** JavaScript (ESM)
 -   **Build Tool:** Vite
--   **Graphics:** Custom WebGL Engine (Shaders, Instanced Rendering, Ribbon Rendering)
--   **Math:** `gl-matrix` for matrix/vector operations
+-   **Graphics:** Three.js (WebGL)
+-   **Math:** `gl-matrix` for matrix/vector operations and Three.js internal math
 -   **Testing:** Playwright (for E2E/scenario verification)
 
 ## Project Architecture

@@ -1,20 +1,15 @@
-import { createGL } from '../renderer/gl.js'
 import { createSceneRenderer } from '../renderer/scene.js'
 import { createHud } from './hud.js'
 import { createInputController } from './input.js'
 import { createInitialState, renderGameToText, startRun, updateState, buildRoadSamples, buildProps, buildStopMarker } from './state.js'
 
-function resizeCanvasToDisplaySize(canvas, gl) {
-  // [v7.8] Force DPR = 1.0 to prevent stuttering on high-res screens (Retina)
-  // High buffer size can cause fill-rate stutter.
-  const dpr = 1.0
+function resizeCanvasToDisplaySize(canvas, renderer) {
+  const dpr = 1.0 // Window.devicePixelRatio를 쓸 수도 있으나, 고질적인 성능 문제를 위해 1.0 고정 (혹은 옵션화)
   const width = Math.max(1, Math.floor(canvas.clientWidth * dpr))
   const height = Math.max(1, Math.floor(canvas.clientHeight * dpr))
 
   if (canvas.width !== width || canvas.height !== height) {
-    canvas.width = width
-    canvas.height = height
-    gl.viewport(0, 0, width, height)
+    renderer.setSize(width, height, false)
   }
 }
 
@@ -34,11 +29,9 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
   const hud = createHud(hudRoot)
   const input = createInputController(window)
 
-  let gl
   let renderer
   try {
-    gl = createGL(canvas)
-    renderer = createSceneRenderer(gl, (message) => hud.reportError(message))
+    renderer = createSceneRenderer(canvas, (message) => hud.reportError(message))
   } catch (error) {
     hud.reportError(error)
     return () => { }
@@ -51,7 +44,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
   let lastTime = performance.now()
   let rafId = 0
 
-  const onResize = () => resizeCanvasToDisplaySize(canvas, gl)
+  const onResize = () => resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
   const onWindowError = (event) => {
     hud.reportError(event.error || event.message)
   }
@@ -128,7 +121,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
   }
 
   function updateAndRender(dt, nowSeconds) {
-    resizeCanvasToDisplaySize(canvas, gl)
+    resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
     const controls = input.read()
     const justPressedAccelerate = controls.accelerate && !prevControls.accelerate
     // Auto-start only from menu.
@@ -227,7 +220,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
       state.props = props
       state.stopMarker = stopMarker
 
-      resizeCanvasToDisplaySize(canvas, gl)
+      resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
       renderer.draw(renderState, now / 1000)
       syncHud()
 
@@ -259,7 +252,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     delete window.advanceTime
   }
 
-  resizeCanvasToDisplaySize(canvas, gl)
+  resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
   syncHud()
 
   window.addEventListener('resize', onResize)
