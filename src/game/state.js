@@ -416,7 +416,7 @@ export function createInitialState() {
 
   const state = {
     mode: 'menu',
-    speed: 0,
+    speed: 35,
     speedMax: MAX_SPEED,
 
     playerX: 0,
@@ -543,7 +543,7 @@ export function startRun(state) {
 }
 
 export function updateState(state, input, dt) {
-  if (state.mode !== 'running') {
+  if (state.mode !== 'running' && state.mode !== 'menu') {
     return
   }
 
@@ -560,22 +560,25 @@ export function updateState(state, input, dt) {
   state.prevWorldYaw = state.worldYaw
 
   const step = Math.min(dt, 0.1)
+  const isMenu = state.mode === 'menu'
 
-  state.missionTime -= step
-  if (state.missionTime <= 0) {
-    state.missionTime = 0
-    state.mode = 'ended'
-    state.result = 'timeout'
-    return
+  if (!isMenu) {
+    state.missionTime -= step
+    if (state.missionTime <= 0) {
+      state.missionTime = 0
+      state.mode = 'ended'
+      state.result = 'timeout'
+      return
+    }
   }
 
   state.doorAnim += ((state.doorOpen ? 1 : 0) - state.doorAnim) * step * 5
 
-  const accel = input.accelerate && !state.doorOpen
-  const brake = input.brake
-  const reverse = input.reverse && !state.doorOpen
+  const accel = isMenu ? (state.speed < 45) : (input.accelerate && !state.doorOpen)
+  const brake = isMenu ? false : input.brake
+  const reverse = isMenu ? false : (input.reverse && !state.doorOpen)
 
-  if (state.doorOpen && (input.accelerate || input.reverse)) {
+  if (!isMenu && state.doorOpen && (input.accelerate || input.reverse)) {
     if (Math.round(state.distance * 10) % 10 === 0) {
       pushToast(state, '문을 닫아야 출발할 수 있습니다 (Space)', 'alert')
     }
@@ -615,7 +618,7 @@ export function updateState(state, input, dt) {
   state.speed = clamp(targetSpeed, -MAX_REVERSE_SPEED, MAX_SPEED)
   if (Math.abs(state.speed) < 0.05) state.speed = 0
 
-  const doorInput = input.command === 'space'
+  const doorInput = isMenu ? false : input.command === 'space'
   if (doorInput) {
     if (Math.abs(state.speed) < 0.01) {
       state.speed = 0
@@ -626,17 +629,27 @@ export function updateState(state, input, dt) {
     }
   }
 
-  let steerInput = 0
-  if (input.left && !input.right) steerInput = -1
-  else if (input.right && !input.left) steerInput = 1
-  state.steeringValue += (steerInput - state.steeringValue) * step * (STEER_RATE * 3)
-
   const speedAbs = Math.abs(state.speed)
+
+  if (isMenu) {
+    const proj = projectWorldToTrack(state, state.worldX, state.worldZ, state.distance)
+    state.worldX = proj.centerX
+    state.worldZ = proj.centerZ
+    state.worldYaw = proj.heading
+    state.steeringValue = 0
+  } else {
+    let steerInput = 0
+    if (input.left && !input.right) steerInput = -1
+    else if (input.right && !input.left) steerInput = 1
+    state.steeringValue += (steerInput - state.steeringValue) * step * (STEER_RATE * 3)
+
+    const dir = state.speed < -0.1 ? -1 : 1
+    const steerAuthority = clamp((speedAbs - 0.4) / 3.6, 0, 1)
+    const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority * STEER_YAW_SIGN
+    state.worldYaw = normalizeAngle(state.worldYaw + steerYawRate * step)
+  }
+
   const projectionBefore = projectWorldToTrack(state, state.worldX, state.worldZ, state.distance)
-  const dir = state.speed < -0.1 ? -1 : 1
-  const steerAuthority = clamp((speedAbs - 0.4) / 3.6, 0, 1)
-  const steerYawRate = state.steeringValue * (0.55 + speedAbs * 0.012) * dir * steerAuthority * STEER_YAW_SIGN
-  state.worldYaw = normalizeAngle(state.worldYaw + steerYawRate * step)
 
   const forwardX = Math.sin(state.worldYaw)
   const forwardZ = Math.cos(state.worldYaw)
@@ -670,7 +683,10 @@ export function updateState(state, input, dt) {
 
   const distToStop = state.nextStopDistance - state.distance
 
-  if (Math.abs(distToStop) < STOP_CAPTURE_DISTANCE && Math.abs(state.speed) < 0.1 && state.doorOpen) {
+  if (isMenu && distToStop < -STOP_MISS_DISTANCE) {
+    state.stopIndex += 1
+    state.nextStopDistance += 400
+  } else if (!isMenu && Math.abs(distToStop) < STOP_CAPTURE_DISTANCE && Math.abs(state.speed) < 0.1 && state.doorOpen) {
     state.stopHoldTime += step
     const boardingDuration = 2.0
 
@@ -699,7 +715,7 @@ export function updateState(state, input, dt) {
     }
   }
 
-  if (distToStop < -STOP_MISS_DISTANCE) {
+  if (!isMenu && distToStop < -STOP_MISS_DISTANCE) {
     state.stopIndex += 1
     state.nextStopDistance += 400
     state.missedStops += 1

@@ -23,3 +23,10 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Patch: flipped steering sign again to match user requirement explicitly (`A/Left => left yaw`, `D/Right => right yaw`) using `-input.steerAxis` in state integration.
 - Correction: steering sign was re-verified with a direct state simulation; final mapping is now `steerInput = input.steerAxis` (`left=-1`, `right=+1`) so left input yields negative yaw/worldX and right yields positive yaw/worldX.
 - Patch: steering input decoding is now forced from boolean keys only (`left && !right => -1`, `right && !left => +1`) to eliminate any axis-sign or stale-value inversion path.
+- UI Patch: revamped start overlay markup in `src/main.js` with dedicated title-screen classes while preserving `#start-overlay` / `#start-btn` IDs and start flow.
+- UI Patch: restyled start title screen in `src/style.css` to align with existing HUD palette/typography (dark transit panel + pixel-like title + yellow start CTA) and simplified content from help-panel style to title-first layout.
+- Validation: `npm run build` passes (Vite build OK). Existing Node warning remains: local runtime is Node 18.20.3 while Vite recommends >=20.19.
+- Test note: attempted skill Playwright client execution; blocked in this environment due missing browser install/module resolution from skill path. No automated screenshot artifact generated in this turn.
+- UI Revision: simplified start screen to title-focused composition only (`천안 버스 / BUSDRIVE SHIFT` + START button), removing helper-style subtitle/kicker/hint blocks that felt inconsistent with gameplay tone.
+- UI Revision: tightened start-screen CSS to HUD-consistent palette and pixel typography, centered composition, reduced visual clutter.
+- Validation: `npm run build` passes after simplification (same existing Node version warning).

@@ -7,11 +7,15 @@ const VERTEX_SHADER_SOURCE = `
 attribute vec3 a_pos;
 attribute vec3 a_col;
 uniform mat4 u_mvp;
+
 varying vec3 v_col;
+varying float v_dist;
 
 void main() {
-  gl_Position = u_mvp * vec4(a_pos, 1.0);
+  vec4 pos = u_mvp * vec4(a_pos, 1.0);
+  gl_Position = pos;
   v_col = a_col;
+  v_dist = pos.z;
 }
 `
 
@@ -20,20 +24,32 @@ attribute vec3 a_pos;
 attribute vec3 a_col;
 attribute mat4 a_model;
 uniform mat4 u_vp;
+
 varying vec3 v_col;
+varying float v_dist;
 
 void main() {
-  gl_Position = u_vp * a_model * vec4(a_pos, 1.0);
+  vec4 pos = u_vp * a_model * vec4(a_pos, 1.0);
+  gl_Position = pos;
   v_col = a_col;
+  v_dist = pos.z;
 }
 `
 
 const FRAGMENT_SHADER_SOURCE = `
 precision mediump float;
 varying vec3 v_col;
+varying float v_dist;
+
+uniform vec3 u_fogColor;
+uniform float u_fogDensity;
 
 void main() {
-  gl_FragColor = vec4(v_col, 1.0);
+  float distXZ = max(0.0, v_dist);
+  float fogFactor = 1.0 - exp(-(distXZ * u_fogDensity));
+  fogFactor = clamp(fogFactor, 0.0, 1.0);
+  
+  gl_FragColor = vec4(mix(v_col, u_fogColor, fogFactor), 1.0);
 }
 `
 
@@ -142,12 +158,16 @@ export function createSceneRenderer(gl, reportError) {
   const positionLocation = gl.getAttribLocation(program, 'a_pos')
   const colorLocation = gl.getAttribLocation(program, 'a_col')
   const mvpLocation = gl.getUniformLocation(program, 'u_mvp')
+  const fogColorLocation = gl.getUniformLocation(program, 'u_fogColor')
+  const fogDensityLocation = gl.getUniformLocation(program, 'u_fogDensity')
 
   const programInstanced = createProgram(gl, VERTEX_SHADER_INSTANCED_SOURCE, FRAGMENT_SHADER_SOURCE)
   const positionLocI = gl.getAttribLocation(programInstanced, 'a_pos')
   const colorLocI = gl.getAttribLocation(programInstanced, 'a_col')
   const modelLocI = gl.getAttribLocation(programInstanced, 'a_model')
   const vpLocI = gl.getUniformLocation(programInstanced, 'u_vp')
+  const fogColorLocI = gl.getUniformLocation(programInstanced, 'u_fogColor')
+  const fogDensityLocI = gl.getUniformLocation(programInstanced, 'u_fogDensity')
 
   if (positionLocation < 0 || colorLocation < 0 || !mvpLocation) {
     throw new Error('Shader attribute/uniform lookup failed.')
@@ -399,9 +419,15 @@ export function createSceneRenderer(gl, reportError) {
     mat4.lookAt(viewMatrix, eye, target, up)
     mat4.multiply(viewProjectionMatrix, projectionMatrix, viewMatrix)
 
+    const fogColor = [0.36, 0.67, 0.93] // Restore standard clear sky color
+    const fogDensity = 0.002
+
     gl.useProgram(program)
-    gl.clearColor(0.36, 0.67, 0.93, 1)
+    gl.clearColor(fogColor[0], fogColor[1], fogColor[2], 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+
+    gl.uniform3fv(fogColorLocation, fogColor)
+    gl.uniform1f(fogDensityLocation, fogDensity)
 
     mat4.identity(modelMatrix)
     mat4.translate(modelMatrix, modelMatrix, [busX, -0.05, busZ - 10])
@@ -442,6 +468,9 @@ export function createSceneRenderer(gl, reportError) {
     }
 
     gl.useProgram(programInstanced)
+    gl.uniform3fv(fogColorLocI, fogColor)
+    gl.uniform1f(fogDensityLocI, fogDensity)
+
     treeTrunkBatch.flush(viewProjectionMatrix)
     treeLeavesBatch.flush(viewProjectionMatrix)
     towerBatch.flush(viewProjectionMatrix)
