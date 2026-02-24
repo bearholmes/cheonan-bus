@@ -96,18 +96,21 @@ body,
 }
 
 .hud-meter {
-  margin-top: 6px;
-  height: 8px;
-  border-radius: 0;
+  position: fixed;
+  bottom: 0px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  height: 4px;
   background: rgba(0, 0, 0, 0.45);
   overflow: hidden;
+  z-index: 9;
 }
 
 .hud-meter-fill {
   height: 100%;
   width: 0;
-  border-radius: 0;
-  background: linear-gradient(90deg, #ffffff, #f8d95e);
+  background: linear-gradient(90deg, #54c8ff, #fff26f);
   transition: width 90ms linear;
 }
 
@@ -405,26 +408,42 @@ body,
   width: 4px;
 }
 
-/* Speedometer: Bottom Center */
+/* 레이싱 게임 스타일 속도계 완벽 구현 (Bottom Center) */
 .hud-speed-row {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  z-index: 10;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 10px 20px;
-  border-radius: 40px;
-}
-
-.hud-meter {
   position: fixed;
   bottom: 15px;
   left: 50%;
   transform: translateX(-50%);
-  width: 300px;
-  z-index: 9;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  z-index: 10;
+  background: rgba(10, 16, 24, 0.85); /* 레이싱 UI 다크 패널 */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 12px 30px;
+  border-radius: 30px; /* 둥근 캡슐 형태 */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+}
+
+.hud-speed-value {
+  font-size: 34px; /* 더 크고 스포티하게 */
+  font-weight: 800;
+  color: #fff; /* 순백색 디지털 메터 */
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); /* 자체 발광 글로우 */
+  letter-spacing: -2px;
+}
+
+.hud-speed-unit {
+  font-size: 14px;
+  color: #87a9be;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* 속도가 올라가면 니트로 효과처럼 진하게 변경 */
+.speed-high .hud-speed-value {
+  color: #ff5500;
+  text-shadow: 0 0 15px rgba(255, 85, 0, 0.6);
 }

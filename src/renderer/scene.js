@@ -9,45 +9,53 @@ export function createSceneRenderer(canvas, reportError) {
   renderer.setPixelRatio(1.0)
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.info.autoReset = false
 
   const scene = new THREE.Scene()
   const fogColor = new THREE.Color(0.36, 0.67, 0.93)
   scene.background = fogColor
   scene.fog = new THREE.FogExp2(fogColor, 0.002)
 
-  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 700)
+  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 800)
 
-  // 1. 조명 (사실적인 분위기 연출)
-  const ambientLight = new THREE.AmbientLight(0xdbe6f2, 0.6) // 하늘빛 환경광
+  camera.position.set(0, 10, -50)
+  camera.lookAt(0, 0, 0)
+
+  // 환하고 화사한 환경광 (기존보다 밝은 자연광 톤)
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.95)
   scene.add(ambientLight)
 
-  const dirLight = new THREE.DirectionalLight(0xfff7e6, 1.2) // 따뜻한 태양광
+  // 주 조명 (태양광) - 방향과 색상을 따뜻하게 조정
+  const dirLight = new THREE.DirectionalLight(0xfffaed, 2.5)
   dirLight.position.set(200, 300, -100)
+  // 그림자 풀 퀄리티 (범위 확장 및 해상도 극대화)
   dirLight.castShadow = true
-  dirLight.shadow.mapSize.width = 2048
-  dirLight.shadow.mapSize.height = 2048
-  dirLight.shadow.camera.near = 0.5
-  dirLight.shadow.camera.far = 800
-  dirLight.shadow.camera.left = -200
-  dirLight.shadow.camera.right = 200
-  dirLight.shadow.camera.top = 200
-  dirLight.shadow.camera.bottom = -200
-  dirLight.shadow.bias = -0.001
+  dirLight.shadow.mapSize.width = 4096
+  dirLight.shadow.mapSize.height = 4096
+  dirLight.shadow.camera.near = 10
+  dirLight.shadow.camera.far = 400
+  dirLight.shadow.camera.left = -150
+  dirLight.shadow.camera.right = 150
+  dirLight.shadow.camera.top = 150
+  dirLight.shadow.camera.bottom = -150
+  dirLight.shadow.bias = -0.0005 // 픽셀 깨짐 방지
   scene.add(dirLight)
 
-  // 자주 쓰이는 재질 (PBR)
+  // 도로 재질 (실제 아스팔트 느낌으로 어둡고 거칠게)
   const materials = {
-    road: new THREE.MeshStandardMaterial({ color: 0x33353b, roughness: 0.8 }),
-    shoulder: new THREE.MeshStandardMaterial({ color: 0xd6cfb8, roughness: 0.9 }),
-    grass: new THREE.MeshStandardMaterial({ color: 0x2b7833, roughness: 1.0 }),
-    rumble: new THREE.MeshStandardMaterial({ color: 0xb8b8b8, roughness: 0.9 }),
-    ground: new THREE.MeshStandardMaterial({ color: 0x24632b, roughness: 1.0 }),
-    lane: new THREE.MeshBasicMaterial({ color: 0xf2f2e6 }), // 빛에 영향을 받지 않도록
-    treeTrunk: new THREE.MeshStandardMaterial({ color: 0x4d331a, roughness: 0.9 }),
-    treeLeaves: new THREE.MeshStandardMaterial({ color: 0x26732e, roughness: 0.8 }),
-    tower: new THREE.MeshStandardMaterial({ color: 0x618fB3, roughness: 0.5 }),
-    sign: new THREE.MeshStandardMaterial({ color: 0xd1e6fa, roughness: 0.4 }),
-    signPole: new THREE.MeshStandardMaterial({ color: 0x2e3845, roughness: 0.6, metalness: 0.5 }),
+    ground: new THREE.MeshStandardMaterial({ color: 0x2e4226, roughness: 1.0, metalness: 0.0 }), // 잔디밭
+    road: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9, metalness: 0.1 }), // 진한 아스팔트
+    shoulder: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.9 }),
+    rumble: new THREE.MeshStandardMaterial({ color: 0x8a1b1b, roughness: 0.8 }), // 붉은색 럼블 스트립
+    laneYellow: new THREE.MeshBasicMaterial({ color: 0xf5cf36 }), // 중앙선 노란색
+    laneWhite: new THREE.MeshBasicMaterial({ color: 0xffffff }), // 일반 차선 흰색
+
+    // 나무, 건물 (성능을 위해 음영 연산 최소화)
+    treeTrunk: new THREE.MeshLambertMaterial({ color: 0x3d2817 }),
+    treeLeaves: new THREE.MeshLambertMaterial({ color: 0x1d4722 }),
+    tower: new THREE.MeshLambertMaterial({ color: 0x3d4a57 }),
+    signPole: new THREE.MeshLambertMaterial({ color: 0x737a82 }),
+    sign: new THREE.MeshLambertMaterial({ color: 0x073163 }),
     stopPole: new THREE.MeshStandardMaterial({ color: 0x2b333d, roughness: 0.6 }),
     stopBoard: new THREE.MeshStandardMaterial({ color: 0xf2db3b, roughness: 0.4 }),
     stopBench: new THREE.MeshStandardMaterial({ color: 0x704d2e, roughness: 0.8 }),
@@ -58,21 +66,25 @@ export function createSceneRenderer(canvas, reportError) {
     stopBeam: new THREE.MeshBasicMaterial({ color: 0xfa5940, transparent: true, opacity: 0.7 }),
     stopPillar: new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.6 }),
 
-    // 버스 부품 (반사를 줘서 입체감을 살린 페인트 및 금속 재질)
-    busBody: new THREE.MeshStandardMaterial({ color: 0x247a3f, roughness: 0.2, metalness: 0.3 }),
-    busUpper: new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 }),
-    busWindow: new THREE.MeshStandardMaterial({ color: 0x10212e, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.85 }),
-    busRoof: new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.6 }),
+    // 버스 부품 (고해상도 디테일을 위한 재질 세분화)
+    busBody: new THREE.MeshStandardMaterial({ color: 0x00a35c, roughness: 0.3, metalness: 0.2 }), // 시내버스 초록색
+    busUpper: new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.3, metalness: 0.1 }), // 상단 흰색
+    busWindow: new THREE.MeshStandardMaterial({ color: 0x05131f, roughness: 0.05, metalness: 0.9, transparent: true, opacity: 0.85 }), // 짙은 유리
+    busRoof: new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.6 }),
     busBumper: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
-    wheelRim: new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.7 }),
-    wheelTire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 })
+    busDisplay: new THREE.MeshBasicMaterial({ color: 0xff5500 }), // 전면 LED 전광판 (자체 발광)
+    busHeadlight: new THREE.MeshBasicMaterial({ color: 0xffffff }), // 헤드라이트 (자체 발광)
+    busTaillight: new THREE.MeshBasicMaterial({ color: 0xff0000 }), // 후미등 (자체 발광)
+    busDoor: new THREE.MeshStandardMaterial({ color: 0x1c1c1c, roughness: 0.6 }), // 출입구 문
+    wheelRim: new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.8 }), // 반짝이는 휠
+    wheelTire: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9 })
   }
 
   // 지형 초기화
   const groundGeo = new THREE.PlaneGeometry(520, 520)
   const groundMesh = new THREE.Mesh(groundGeo, materials.ground)
   groundMesh.rotation.x = -Math.PI / 2
-  groundMesh.position.y = -0.25
+  groundMesh.position.y = -0.25 // 원본 베이스라인 높이 복원
   groundMesh.receiveShadow = true
   scene.add(groundMesh)
 
@@ -121,6 +133,8 @@ export function createSceneRenderer(canvas, reportError) {
 
       this.geometry.attributes.position.needsUpdate = true
       this.geometry.computeVertexNormals()
+      this.geometry.computeBoundingSphere() // 핵심 수정: 카메라도로(프러스텀) 컬링 방지를 위한 바운딩 영역 강제 재계산
+      this.geometry.computeBoundingBox()    // 이 두 줄이 누락되어 도로가 허공에서 잘려 나갔음
       this.geometry.setDrawRange(0, (samples.length - 1) * 6)
     }
   }
@@ -147,18 +161,23 @@ export function createSceneRenderer(canvas, reportError) {
   const shoulderOuter = rumbleOuter + shoulderWidth
   const grassOuter = shoulderOuter + grassWidth
 
-  // 차선 대쉬
-  const laneGeo = new THREE.PlaneGeometry(0.25, 2.4)
+  // 차선 대쉬 (매 프레임 생성하던 악성 버그 제거, 1번만 할당하여 재사용)
+  const laneGeo = new THREE.PlaneGeometry(0.24, 2.4)
   laneGeo.rotateX(-Math.PI / 2) // 땅을 보게
-  let laneInstancedMesh = null
+  const MAX_LANES = 600
+  const laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.lane, MAX_LANES)
+  laneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  laneInstancedMesh.frustumCulled = false
+  scene.add(laneInstancedMesh)
 
-  // 3. 인스턴싱 최적화 헬퍼 (배경 오브젝트들)
+  // 3. 인스턴싱 최적화 헬퍼 (배경 오브젝트들 - 성능 최적화를 위해 그림자 캐스팅 해제)
   const MAX_INSTANCES = 500
   function createPropInstanced(geo, mat) {
     const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES)
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-    mesh.castShadow = true
+    mesh.castShadow = false // M1 버벅임의 주범: 수백개 프랍의 그림자 투사를 끔
     mesh.receiveShadow = true
+    mesh.frustumCulled = false
     scene.add(mesh)
     return mesh
   }
@@ -171,33 +190,61 @@ export function createSceneRenderer(canvas, reportError) {
     sign: createPropInstanced(new THREE.BoxGeometry(2.6, 1.3, 0.26), materials.sign),
   }
 
-  // 4. 버스 조립 (Group 기반) - 실제 대형 버스(운전석이 낮고 차체가 긴) 비율 적용
+  // 4. 버스 조립 (Group 기반) - 둘리/김밥 비율을 각진 현대 버스로 완전 개조
   const busGroup = new THREE.Group()
 
-  function addPart(geo, mat, x, y, z, castShadow = true) {
+  function addPart(geo, mat, offset, castShadow = true) {
     const mesh = new THREE.Mesh(geo, mat)
-    mesh.position.set(x, y, z)
+    mesh.position.set(...offset)
     mesh.castShadow = castShadow
     mesh.receiveShadow = true
     busGroup.add(mesh)
     return mesh
   }
 
-  // 버스 메인 바디 (길이 연장, 얄상하게)
-  addPart(new THREE.BoxGeometry(2.8, 1.2, 10.5), materials.busBody, 0, 0.5, 0)
-  // 유리창 (바디보다 살짝 작게, 길게)
-  addPart(new THREE.BoxGeometry(2.85, 1.1, 10.3), materials.busWindow, 0, 1.6, 0, false)
-  // 상단 지붕대
-  addPart(new THREE.BoxGeometry(2.7, 1.3, 10.5), materials.busUpper, 0, 1.5, 0)
-  // 에어컨 루프 (살짝 앞쪽으로 배치)
-  addPart(new THREE.BoxGeometry(2.4, 0.25, 4.0), materials.busRoof, 0, 2.25, -1.0)
-  // 앞뒤 범퍼
-  addPart(new THREE.BoxGeometry(2.9, 0.35, 0.3), materials.busBumper, 0, 0.0, -5.3)
-  addPart(new THREE.BoxGeometry(2.9, 0.35, 0.3), materials.busBumper, 0, 0.0, 5.3)
+  // 버스 차체를 위아래로 길고 앞뒤로 늘리며 각지게 (둘리 완벽 탈피, 극한의 디테일 추가)
+  // 메인 바디 및 상단부
+  addPart(new THREE.BoxGeometry(2.9, 1.4, 11.5), materials.busBody, [0, 0.6, 0])
+  addPart(new THREE.BoxGeometry(2.9, 0.4, 11.5), materials.busUpper, [0, 2.5, 0])
+  // 루프 에어컨 박스 (2개)
+  addPart(new THREE.BoxGeometry(2.2, 0.3, 3.5), materials.busRoof, [0, 2.85, -2.0])
+  addPart(new THREE.BoxGeometry(2.2, 0.3, 2.0), materials.busRoof, [0, 2.85, 2.5])
 
-  // 바퀴 ("김밥"처럼 굵은 형태 제거, 반경은 살리고 폭을 얇게)
-  const wheelGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.25, 24)
-  wheelGeo.rotateZ(Math.PI / 2) // 실린더를 뉘여서 바퀴 모양으로
+  // 측면 통유리창 (양옆을 덮는 거대한 블랙 글래스)
+  addPart(new THREE.BoxGeometry(2.95, 1.3, 9.8), materials.busWindow, [0, 1.65, -0.2], false)
+  // 전면 유리창 (운전석 윈드실드)
+  addPart(new THREE.BoxGeometry(2.8, 1.5, 0.2), materials.busWindow, [0, 1.8, -5.76], false)
+  // 후면 유리창
+  addPart(new THREE.BoxGeometry(2.8, 0.8, 0.2), materials.busWindow, [0, 2.0, 5.76], false)
+
+  // 전방 LED 전광판 세부 묘사
+  addPart(new THREE.BoxGeometry(2.6, 0.3, 0.1), materials.busDisplay, [0, 2.7, -5.76], false)
+
+  // 헤드라이트 (좌/우 듀얼 라이트 형상화)
+  addPart(new THREE.BoxGeometry(0.5, 0.2, 0.1), materials.busHeadlight, [1.0, 0.35, -5.76], false)
+  addPart(new THREE.BoxGeometry(0.5, 0.2, 0.1), materials.busHeadlight, [-1.0, 0.35, -5.76], false)
+
+  // 후미등 (테일램프)
+  addPart(new THREE.BoxGeometry(0.4, 0.6, 0.1), materials.busTaillight, [1.1, 0.6, 5.76], false)
+  addPart(new THREE.BoxGeometry(0.4, 0.6, 0.1), materials.busTaillight, [-1.1, 0.6, 5.76], false)
+
+  // 버스 승측용 출입문 (폴딩도어 느낌)
+  addPart(new THREE.BoxGeometry(0.1, 2.3, 1.2), materials.busDoor, [1.46, 1.05, -3.8], false)
+  addPart(new THREE.BoxGeometry(0.1, 2.3, 1.2), materials.busDoor, [1.46, 1.05, 1.5], false)
+
+  // 사이드미러 (더듬이 거울 추가)
+  addPart(new THREE.CylinderGeometry(0.04, 0.04, 1.0), materials.busBumper, [1.6, 1.8, -5.4]).rotation.z = Math.PI / 4
+  addPart(new THREE.BoxGeometry(0.2, 0.5, 0.4), materials.busBumper, [1.9, 1.5, -5.4])
+  addPart(new THREE.CylinderGeometry(0.04, 0.04, 1.0), materials.busBumper, [-1.6, 1.8, -5.4]).rotation.z = -Math.PI / 4
+  addPart(new THREE.BoxGeometry(0.2, 0.5, 0.4), materials.busBumper, [-1.9, 1.5, -5.4])
+
+  // 범퍼
+  addPart(new THREE.BoxGeometry(3.0, 0.4, 0.3), materials.busBumper, [0, -0.1, -5.85])
+  addPart(new THREE.BoxGeometry(3.0, 0.4, 0.3), materials.busBumper, [0, -0.1, 5.85])
+
+  // 바퀴 두께(0.25) 유지, 지름(0.5) 
+  const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.25, 24)
+  wheelGeo.rotateZ(Math.PI / 2) // 실린더를 원본처럼 뉘어서 바퀴 모양으로
   const wheels = []
 
   function createWheel(x, y, z) {
@@ -212,17 +259,17 @@ export function createSceneRenderer(canvas, reportError) {
     wheels.push({ anchor, mesh: w })
   }
 
-  const wheelY = -0.05 // 실제 바닥(-0.5) 근처로 약간 위로 조정
-  // 전륜 (조향 가능, 1축)
-  createWheel(1.4, wheelY, -3.8)
-  createWheel(-1.4, wheelY, -3.8)
-  // 후륜 (이중 타이어, 간격 좁힘)
-  createWheel(1.3, wheelY, 3.4); createWheel(1.6, wheelY, 3.4)
-  createWheel(-1.3, wheelY, 3.4); createWheel(-1.6, wheelY, 3.4)
+  const wheelY = 0.0
+  // 전륜
+  createWheel(1.3, wheelY, -4.2)
+  createWheel(-1.3, wheelY, -4.2)
+  // 후륜 (이중 타이어)
+  createWheel(1.2, wheelY, 3.5); createWheel(1.5, wheelY, 3.5)
+  createWheel(-1.2, wheelY, 3.5); createWheel(-1.5, wheelY, 3.5)
 
   scene.add(busGroup)
 
-  // 정류장 (항상 1개만 활성화된다고 가정, 정적 Mesh로 구성하여 위치만 변경)
+  // 정류장 (항상 1개만 활성화된다고 가정) - 고퀄리티(두께감 있는 Mesh)로 교체
   const stopGroup = new THREE.Group()
   const sAdd = (geo, mat, x, y, z) => {
     const mesh = new THREE.Mesh(geo, mat)
@@ -233,26 +280,28 @@ export function createSceneRenderer(canvas, reportError) {
     return mesh
   }
 
-  const stopZoneMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 7.8), materials.stopZone)
-  stopZoneMesh.rotation.x = -Math.PI / 2
-  stopZoneMesh.position.y = 0.015
+  // 기존 꼬임이 심하던 PlaneGeometry 대신 얇은 BoxGeometry를 사용하여 Rotation X(-90도)를 안해도 되게 고침. (대각선 근본 원인 해결)
+  // 원본 비율에 맞게 크기를 복원 (5.2 * 2배)
+  const stopZoneMesh = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.01, 7.8), materials.stopZone)
   stopZoneMesh.receiveShadow = true
   stopGroup.add(stopZoneMesh)
 
-  const stopZoneStripeMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 6.9), materials.stopZoneStripe)
-  stopZoneStripeMesh.rotation.x = -Math.PI / 2
-  stopZoneStripeMesh.position.y = 0.02
+  const stopZoneStripeMesh = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 6.9), materials.stopZoneStripe)
   stopZoneStripeMesh.receiveShadow = true
   stopGroup.add(stopZoneStripeMesh)
 
-  const stopPole = sAdd(new THREE.CylinderGeometry(0.1, 0.1, 1.95, 8), materials.stopPole, 0, 1.0, 0)
-  const stopPillar = sAdd(new THREE.CylinderGeometry(0.14, 0.14, 2.4, 8), materials.stopPillar, 0, 1.25, -0.4)
-  const stopBoard = sAdd(new THREE.BoxGeometry(0.68, 0.72, 0.1), materials.stopBoard, 0, 2.15, 0)
-  const stopBench = sAdd(new THREE.BoxGeometry(1.25, 0.2, 0.42), materials.stopBench, 1.1, 0.45, 0.2) // 기본위치, 동적수정
-  const stopBenchL1 = sAdd(new THREE.BoxGeometry(0.12, 0.34, 0.12), materials.stopBenchLeg, 1.1 - 0.45, 0.22, 0.2)
-  const stopBenchL2 = sAdd(new THREE.BoxGeometry(0.12, 0.34, 0.12), materials.stopBenchLeg, 1.1 + 0.45, 0.22, 0.2)
-  const stopBeacon = sAdd(new THREE.BoxGeometry(0.6, 0.6, 0.6), materials.stopBeacon, 0, 2.75, 0)
-  const stopBeam = sAdd(new THREE.BoxGeometry(0.95, 8.4, 0.95), materials.stopBeam, 0, 4.5, 0)
+  // 정류장 시설물 크기 및 디테일 강화
+  const stopPole = sAdd(new THREE.CylinderGeometry(0.15, 0.15, 1.95, 16), materials.stopPole, 0, 1.0, 0)
+  const stopPillar = sAdd(new THREE.CylinderGeometry(0.2, 0.2, 2.4, 16), materials.stopPillar, 0, 1.25, -0.4)
+  const stopBoard = sAdd(new THREE.BoxGeometry(1.2, 0.9, 0.15), materials.stopBoard, 0, 2.15, 0) // 안내판 크기 확장
+
+  // 벤치 비율 (원래 너무 작았던 것을 넓게 핌)
+  const stopBench = sAdd(new THREE.BoxGeometry(2.5, 0.2, 0.6), materials.stopBench, 1.1, 0.45, 0.2)
+  const stopBenchL1 = sAdd(new THREE.BoxGeometry(0.15, 0.34, 0.15), materials.stopBenchLeg, 1.1 - 1.0, 0.22, 0.2)
+  const stopBenchL2 = sAdd(new THREE.BoxGeometry(0.15, 0.34, 0.15), materials.stopBenchLeg, 1.1 + 1.0, 0.22, 0.2)
+
+  const stopBeacon = sAdd(new THREE.BoxGeometry(0.8, 0.8, 0.8), materials.stopBeacon, 0, 2.8, 0)
+  const stopBeam = sAdd(new THREE.BoxGeometry(1.2, 8.4, 1.2), materials.stopBeam, 0, 4.5, 0)
 
   scene.add(stopGroup)
 
@@ -284,6 +333,9 @@ export function createSceneRenderer(canvas, reportError) {
     dirLight.target.position.set(busX, 0, busZ)
     dirLight.target.updateMatrixWorld()
 
+    // 2. 물리적 바닥 지형이 버스를 무한정 따라다니게 추적 (원본 복원: 코스 이탈 시 허공에 뜨는 문제 완벽 해결)
+    groundMesh.position.set(busX, -0.25, busZ - 10)
+
     // 1. 리본 업데이트
     ribbons.road.update(samples, -roadHalf, roadHalf, 0)
     ribbons.shoulderL.update(samples, -shoulderOuter, -rumbleOuter, 0)
@@ -293,42 +345,41 @@ export function createSceneRenderer(canvas, reportError) {
     ribbons.rumbleL.update(samples, -rumbleOuter, -roadHalf, 0.08)
     ribbons.rumbleR.update(samples, roadHalf, rumbleOuter, 0.08)
 
-    // 2. 차선 업데이트 (InstancedMesh 재생성 방식. 차선 개수가 많지 않으므로 매 프레임 업데이트)
-    let dashCount = 0
+    // 2. 차선 업데이트 
+    let laneIdx = 0
+    // 노란색 이중 중앙선 (고퀄리티 차선 구현)
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i]
-      if (s.i > 2 && s.segmentIndex % 5 !== 0) dashCount++
-    }
+      if (s.i > 2 && laneIdx < MAX_LANES - 2) {
+        // 중앙선 1
+        dummyMatrix.identity()
+        dummyMatrix.makeRotationY(-s.heading)
+        dummyMatrix.setPosition(s.centerX - 0.2, 0.08, s.centerZ)
+        laneInstancedMesh.setMatrixAt(laneIdx, dummyMatrix)
+        laneInstancedMesh.setColorAt(laneIdx++, new THREE.Color(0xf5cf36))
 
-    if (laneInstancedMesh) {
-      scene.remove(laneInstancedMesh)
-      laneInstancedMesh.dispose()
-    }
-    if (dashCount > 0) {
-      laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.lane, dashCount)
-      let idx = 0
-      for (let i = 0; i < samples.length; i++) {
-        const s = samples[i]
-        if (s.i > 2 && s.segmentIndex % 5 !== 0) {
-          dummyMatrix.identity()
-          dummyMatrix.makeRotationY(-s.heading)
-          dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
-          laneInstancedMesh.setMatrixAt(idx++, dummyMatrix)
-        }
+        // 중앙선 2
+        dummyMatrix.identity()
+        dummyMatrix.makeRotationY(-s.heading)
+        dummyMatrix.setPosition(s.centerX + 0.2, 0.08, s.centerZ)
+        laneInstancedMesh.setMatrixAt(laneIdx, dummyMatrix)
+        laneInstancedMesh.setColorAt(laneIdx++, new THREE.Color(0xf5cf36))
       }
-      laneInstancedMesh.instanceMatrix.needsUpdate = true
-      scene.add(laneInstancedMesh)
     }
+    laneInstancedMesh.count = laneIdx
+    laneInstancedMesh.instanceMatrix.needsUpdate = true
+    laneInstancedMesh.instanceColor.needsUpdate = true
 
     // 3. 배경 프랍 배치
     const props = state.props || []
     let counts = { treeTrunk: 0, treeLeaves: 0, tower: 0, signPole: 0, sign: 0 }
 
     for (const prop of props) {
-      // 카메라 뒤 멀리 있는건 Culling
+      // 카메라 뒤 멀리 있는건 Culling 하되, 가시거리를 대폭 넓혀 팝인(갑자기 나타남) 현상 방지
       const dx = prop.x - busX; const dz = prop.z - busZ
       const forwardDist = dx * forwardX + dz * forwardZ
-      if (forwardDist < -90 || forwardDist > 460) continue
+      if (forwardDist < -120 || forwardDist > 800) continue // 표시 한계를 800m 밖으로 확장
+
 
       const s = prop.scale
       scaleVec.set(s, s, s)
@@ -367,7 +418,7 @@ export function createSceneRenderer(canvas, reportError) {
     const carRoll = -(state.renderCarRoll ?? state.carRoll ?? 0) * 0.18 // 축 방향을 동일하게 맞춤
     const carPitch = -(state.renderPitch ?? state.pitch ?? 0) * 0.07
 
-    busGroup.position.set(busX, 0.45, busZ) // 지면 밀착
+    busGroup.position.set(busX, 0.58, busZ) // 원본 지면 밀착 높이(0.58)로 복원
     busGroup.rotation.set(-carPitch, carYaw, carRoll, 'YXZ')
 
     const steeringValue = state.renderSteeringValue ?? state.steeringValue ?? 0
@@ -390,10 +441,11 @@ export function createSceneRenderer(canvas, reportError) {
       const zoneZ = marker.zoneZ ?? marker.centerZ
       const heading = marker.heading || 0
 
+      // BoxGeometry 교체로 인해 이제 아주 단순하게 Y축으로만 회전하면 됨 (대각선 버그 사라짐)
       stopZoneMesh.position.set(zoneX, 0.015, zoneZ)
-      stopZoneMesh.rotation.z = -heading
+      stopZoneMesh.rotation.set(0, heading, 0)
       stopZoneStripeMesh.position.set(zoneX, 0.02, zoneZ)
-      stopZoneStripeMesh.rotation.z = -heading
+      stopZoneStripeMesh.rotation.set(0, heading, 0)
 
       stopPole.position.set(marker.x, 1.0, marker.z)
       stopPillar.position.set(zoneX, 1.25, marker.z - 0.4)
