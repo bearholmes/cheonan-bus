@@ -62,7 +62,7 @@ export function createSceneRenderer(canvas, reportError) {
     stopBenchLeg: new THREE.MeshStandardMaterial({ color: 0x42382e, roughness: 0.6 }),
     stopZone: new THREE.MeshStandardMaterial({ color: 0xf2ed59, roughness: 0.9 }),
     stopZoneStripe: new THREE.MeshStandardMaterial({ color: 0x1a2129, roughness: 0.9 }),
-    stopBeacon: new THREE.MeshBasicMaterial({ color: 0xffd657 }), // 야간에도 빛나게 Basic
+    stopBeacon: new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 }), // 푸른색 홀로그램 큐브로 변경
     stopBeam: new THREE.MeshBasicMaterial({ color: 0xfa5940, transparent: true, opacity: 0.7 }),
     stopPillar: new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.6 }),
 
@@ -161,10 +161,8 @@ export function createSceneRenderer(canvas, reportError) {
   const shoulderOuter = rumbleOuter + shoulderWidth
   const grassOuter = shoulderOuter + grassWidth
 
-  // 차선 대쉬 (매 프레임 생성하던 악성 버그 제거, 1번만 할당하여 재사용)
-  // Three.js PlaneGeometry는 기본이 XY평면이므로 바닥에 눕히면 Y축 높이가 Z축 길이가 됨.
-  const laneGeo = new THREE.PlaneGeometry(0.24, 2.4)
-  laneGeo.rotateX(-Math.PI / 2) // 땅을 보게 눕히면 너비(0.24)는 X, 높이(2.4)는 Z가 됨.
+  // 차선 대쉬 (명확하게 BoxGeometry로 두께를 주어 축 꼬임에서 완전히 해방됨)
+  const laneGeo = new THREE.BoxGeometry(0.18, 0.02, 2.4)
   const MAX_LANES = 600
   const laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.laneYellow, MAX_LANES)
   laneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
@@ -183,11 +181,20 @@ export function createSceneRenderer(canvas, reportError) {
     return mesh
   }
 
+  // 모던 로우폴리(Low-Poly) 스타일 메쉬 (스케일 원복 복구)
+  const treeLeavesGeo = new THREE.DodecahedronGeometry(3.2, 0)
+  const treeTrunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2.4, 7)
+  const towerGeo = new THREE.BoxGeometry(2.4, 10.0, 2.4)
+
+  // 고층 빌딩 느낌을 주도록 반사율(roughness) 조정 및 메탈 느낌 추가
+  const lowPolyTowerMat = new THREE.MeshStandardMaterial({ color: 0x3d4a57, flatShading: true, roughness: 0.3, metalness: 0.5 })
+  const lowPolyLeafMat = new THREE.MeshStandardMaterial({ color: 0x1d4722, flatShading: true, roughness: 0.9 })
+
   const propMeshes = {
-    treeTrunk: createPropInstanced(new THREE.CylinderGeometry(0.3, 0.4, 1.2, 8), materials.treeTrunk),
-    treeLeaves: createPropInstanced(new THREE.ConeGeometry(2.2, 3.5, 8), materials.treeLeaves),
-    tower: createPropInstanced(new THREE.BoxGeometry(1.4, 5.1, 1.4), materials.tower),
-    signPole: createPropInstanced(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 8), materials.signPole),
+    treeTrunk: createPropInstanced(treeTrunkGeo, materials.treeTrunk),
+    treeLeaves: createPropInstanced(treeLeavesGeo, lowPolyLeafMat),
+    tower: createPropInstanced(towerGeo, lowPolyTowerMat),
+    signPole: createPropInstanced(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 6), materials.signPole),
     sign: createPropInstanced(new THREE.BoxGeometry(2.6, 1.3, 0.26), materials.sign),
   }
 
@@ -281,35 +288,69 @@ export function createSceneRenderer(canvas, reportError) {
     return mesh
   }
 
-  // 기존 꼬임이 심하던 PlaneGeometry 대신 얇은 BoxGeometry를 사용하여 Rotation X(-90도)를 안해도 되게 고침. (대각선 근본 원인 해결)
-  // 원본 비율에 맞게 크기를 복원 (5.2 * 2배)
-  const stopZoneMesh = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.01, 7.8), materials.stopZone)
-  stopZoneMesh.receiveShadow = true
-  stopGroup.add(stopZoneMesh)
-
-  const stopZoneStripeMesh = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 6.9), materials.stopZoneStripe)
+  // 정류장 정지선 (바닥 라인 복구)
+  const stopZoneStripeMesh = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 0.4), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }))
   stopZoneStripeMesh.receiveShadow = true
-  stopGroup.add(stopZoneStripeMesh)
+  scene.add(stopZoneStripeMesh)
 
-  // 정류장 시설물 크기 및 디테일 강화
-  const stopPole = sAdd(new THREE.CylinderGeometry(0.15, 0.15, 1.95, 16), materials.stopPole, 0, 1.0, 0)
-  const stopPillar = sAdd(new THREE.CylinderGeometry(0.2, 0.2, 2.4, 16), materials.stopPillar, 0, 1.25, -0.4)
-  const stopBoard = sAdd(new THREE.BoxGeometry(1.2, 0.9, 0.15), materials.stopBoard, 0, 2.15, 0) // 안내판 크기 확장
+  // 진짜 한국형 통유리 버스 정류장 쉘터 (렉 없는 경량 재질)
+  const shelterGroup = new THREE.Group()
+  const shAdd = (geo, mat, x, y, z) => {
+    const mesh = new THREE.Mesh(geo, mat)
+    mesh.position.set(x, y, z)
+    mesh.castShadow = true
+    mesh.receiveShadow = true
+    shelterGroup.add(mesh)
+    return mesh
+  }
 
-  // 벤치 비율 (원래 너무 작았던 것을 넓게 핌)
-  const stopBench = sAdd(new THREE.BoxGeometry(2.5, 0.2, 0.6), materials.stopBench, 1.1, 0.45, 0.2)
-  const stopBenchL1 = sAdd(new THREE.BoxGeometry(0.15, 0.34, 0.15), materials.stopBenchLeg, 1.1 - 1.0, 0.22, 0.2)
-  const stopBenchL2 = sAdd(new THREE.BoxGeometry(0.15, 0.34, 0.15), materials.stopBenchLeg, 1.1 + 1.0, 0.22, 0.2)
+  // 1. 쉘터 지붕
+  const roofMat = new THREE.MeshStandardMaterial({ color: 0x223344, roughness: 0.2, metalness: 0.8, transparent: true, opacity: 0.9 })
+  shAdd(new THREE.BoxGeometry(1.6, 0.1, 4.6), roofMat, 0, 2.5, 0)
 
-  const stopBeacon = sAdd(new THREE.BoxGeometry(0.8, 0.8, 0.8), materials.stopBeacon, 0, 2.8, 0)
-  const stopBeam = sAdd(new THREE.BoxGeometry(1.2, 8.4, 1.2), materials.stopBeam, 0, 4.5, 0)
+  // 2. 쉘터 유리 (MeshBasicMaterial로 렉 원천 차단)
+  const glassMat = new THREE.MeshBasicMaterial({ color: 0x88bbff, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+  shAdd(new THREE.BoxGeometry(0.1, 2.4, 4.4), glassMat, -0.7, 1.25, 0)
+  shAdd(new THREE.BoxGeometry(1.5, 2.4, 0.1), glassMat, 0.0, 1.25, -2.2)
+  shAdd(new THREE.BoxGeometry(1.5, 2.4, 0.1), glassMat, 0.0, 1.25, 2.2)
 
-  scene.add(stopGroup)
+  // 3. 뼈대 기둥
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.4, metalness: 0.6 })
+  shAdd(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 8), frameMat, -0.7, 1.25, -2.2)
+  shAdd(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 8), frameMat, -0.7, 1.25, 2.2)
+  shAdd(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 8), frameMat, 0.7, 1.25, -2.2)
+  shAdd(new THREE.CylinderGeometry(0.05, 0.05, 2.5, 8), frameMat, 0.7, 1.25, 2.2)
+
+  // 4. 벤치
+  shAdd(new THREE.BoxGeometry(0.6, 0.1, 3.0), materials.stopBench, -0.2, 0.5, 0)
+  shAdd(new THREE.BoxGeometry(0.4, 0.5, 0.1), materials.stopBenchLeg, -0.3, 0.25, -1.0)
+  shAdd(new THREE.BoxGeometry(0.4, 0.5, 0.1), materials.stopBenchLeg, -0.3, 0.25, 1.0)
+
+  // 5. 정류장 원형 표지판 세우기 (노란 판자 배제)
+  const poleGroup = new THREE.Group()
+  const pMesh1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2, 16), materials.stopPole)
+  pMesh1.position.set(0, 1.1, 0)
+  pMesh1.castShadow = true
+  const pMesh2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), new THREE.MeshStandardMaterial({ color: 0x0077ff, roughness: 0.5 }))
+  pMesh2.rotation.x = Math.PI / 2
+  pMesh2.position.set(0, 2.4, 0)
+  pMesh2.castShadow = true
+  poleGroup.add(pMesh1, pMesh2)
+  poleGroup.position.set(2.0, 0, 0)
+  shelterGroup.add(poleGroup)
+
+  scene.add(shelterGroup)
 
   const dummyMatrix = new THREE.Matrix4()
   const posVec = new THREE.Vector3()
   const quat = new THREE.Quaternion()
   const scaleVec = new THREE.Vector3()
+  const Y_AXIS = new THREE.Vector3(0, 1, 0) // 매 프레임 메모리 누수 방지용 상수
+
+  // 렉 없는 초경량 정류장 위치 표시기 복구 (박스 삭제됨)
+  const beamMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2, depthWrite: false })
+  const stopBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 20.0, 8), beamMat)
+  scene.add(stopBeam)
 
   function draw(state, dt) {
     const samples = state.roadSamples || []
@@ -354,9 +395,8 @@ export function createSceneRenderer(canvas, reportError) {
       // 5칸 주기 중 3칸만 그리고 2칸 비워 점선(대쉬) 효과 
       if (s.i > 2 && s.segmentIndex % 5 < 3 && laneIdx < MAX_LANES) {
         dummyMatrix.identity()
-        dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
-        // 원본과 완벽하게 똑같이 차선이 굽이지는 방향으로 회전 적용
-        dummyMatrix.makeRotationY(-s.heading)
+        // 차선 꺾임 오류 수정: s.heading 정방향 회전
+        dummyMatrix.makeRotationY(s.heading)
         dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
         laneInstancedMesh.setMatrixAt(laneIdx++, dummyMatrix)
       }
@@ -381,19 +421,19 @@ export function createSceneRenderer(canvas, reportError) {
 
       if (prop.kind === 'tree') {
         if (counts.treeTrunk < MAX_INSTANCES) {
-          dummyMatrix.compose(posVec.set(prop.x, 0.6 * s, prop.z), quat.identity(), scaleVec)
+          dummyMatrix.compose(posVec.set(prop.x, 1.2 * s, prop.z), quat.identity(), scaleVec)
           propMeshes.treeTrunk.setMatrixAt(counts.treeTrunk++, dummyMatrix)
-          dummyMatrix.compose(posVec.set(prop.x, 2.2 * s, prop.z), quat.identity(), scaleVec)
+          dummyMatrix.compose(posVec.set(prop.x, 3.8 * s, prop.z), quat.identity(), scaleVec)
           propMeshes.treeLeaves.setMatrixAt(counts.treeLeaves++, dummyMatrix)
         }
       } else if (prop.kind === 'tower') {
         if (counts.tower < MAX_INSTANCES) {
-          dummyMatrix.compose(posVec.set(prop.x, 2.2 * s, prop.z), quat.identity(), scaleVec)
+          dummyMatrix.compose(posVec.set(prop.x, 5.0 * s, prop.z), quat.identity(), scaleVec)
           propMeshes.tower.setMatrixAt(counts.tower++, dummyMatrix)
         }
       } else {
-        // 표지판
-        quat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -(prop.heading || 0))
+        // 표지판: GC 렉(버벅임)을 거는 new THREE.Vector3 객체 무한 생성 버그를 상수(Y_AXIS)로 해결
+        quat.setFromAxisAngle(Y_AXIS, -(prop.heading || 0))
         if (counts.signPole < MAX_INSTANCES) {
           dummyMatrix.compose(posVec.set(prop.x, 0.95 * s, prop.z), quat, scaleVec)
           propMeshes.signPole.setMatrixAt(counts.signPole++, dummyMatrix)
@@ -436,31 +476,28 @@ export function createSceneRenderer(canvas, reportError) {
       const zoneZ = marker.zoneZ ?? marker.centerZ
       const heading = marker.heading || 0
 
-      // BoxGeometry 교체로 인해 이제 아주 단순하게 Y축으로만 회전하면 됨 (대각선 버그 사라짐)
-      stopZoneMesh.position.set(zoneX, 0.015, zoneZ)
-      stopZoneMesh.rotation.set(0, heading, 0)
-      stopZoneStripeMesh.position.set(zoneX, 0.02, zoneZ)
+      // 바닥 정지선(Stripe) 표시 및 회전
+      stopZoneStripeMesh.position.set(zoneX, 0.015, zoneZ)
       stopZoneStripeMesh.rotation.set(0, heading, 0)
+      stopZoneStripeMesh.visible = true
 
-      stopPole.position.set(marker.x, 1.0, marker.z)
-      stopPillar.position.set(zoneX, 1.25, marker.z - 0.4)
-      stopBoard.position.set(marker.x, 2.15, marker.z)
+      // 정류장(쉘터 등)의 일체형 배치 및 회전
+      shelterGroup.position.set(marker.x, 0, marker.z)
+      let facingRotation = heading
+      if (marker.side === 'right') facingRotation += Math.PI
+      shelterGroup.rotation.set(0, facingRotation, 0)
+      shelterGroup.visible = true
 
-      const benchX = marker.side === 'right' ? marker.x - 1.1 : marker.x + 1.1
-      stopBench.position.set(benchX, 0.45, marker.z + 0.2)
-      stopBenchL1.position.set(benchX - 0.45, 0.22, marker.z + 0.2)
-      stopBenchL2.position.set(benchX + 0.45, 0.22, marker.z + 0.2)
-
-      stopBeacon.position.set(marker.x, 2.75, marker.z)
-      stopBeam.position.set(zoneX, 4.5, marker.z)
+      // 부하 없는 정적인 위치 마커 표시
+      stopBeam.position.set(zoneX, 10.0, marker.z)
 
       const near = Math.abs(stopDistance) < 60
-      const flash = near ? 1.2 : 1.0
-      stopBeacon.scale.set(flash, flash, flash)
-      stopBeam.scale.set(near ? 1.3 : 1, 1, near ? 1.3 : 1)
-      materials.stopBeam.opacity = near ? 0.9 : 0.4
+      beamMat.opacity = near ? 0.4 : 0.15
+
     } else {
-      stopGroup.visible = false
+      stopZoneStripeMesh.visible = false
+      shelterGroup.visible = false
+      stopBeam.visible = false
     }
 
     try {
