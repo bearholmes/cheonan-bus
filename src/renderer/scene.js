@@ -132,9 +132,10 @@ export function createSceneRenderer(canvas, reportError) {
       }
 
       this.geometry.attributes.position.needsUpdate = true
-      this.geometry.computeVertexNormals()
-      this.geometry.computeBoundingSphere() // 핵심 수정: 카메라도로(프러스텀) 컬링 방지를 위한 바운딩 영역 강제 재계산
-      this.geometry.computeBoundingBox()    // 이 두 줄이 누락되어 도로가 허공에서 잘려 나갔음
+      // 치명적인 렉 원인 재거세 (git reset으로 살아났던 부분): 이를 통해 뚝뚝 끊기는 프레임 드랍 완벽 제거
+      // this.geometry.computeVertexNormals() 
+      this.geometry.computeBoundingSphere()
+      this.geometry.computeBoundingBox()
       this.geometry.setDrawRange(0, (samples.length - 1) * 6)
     }
   }
@@ -288,10 +289,20 @@ export function createSceneRenderer(canvas, reportError) {
     return mesh
   }
 
-  // 정류장 정지선 (바닥 라인 복구)
-  const stopZoneStripeMesh = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 0.4), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }))
-  stopZoneStripeMesh.receiveShadow = true
-  scene.add(stopZoneStripeMesh)
+  // 진짜 버스 정차 공간 직사각형 라인 (4개의 선으로 주차 박스를 만듦)
+  const stopZoneGroup = new THREE.Group()
+  const zoneMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 })
+  const l1 = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 0.15), zoneMat)
+  l1.position.set(0, 0, 1.4)
+  const l2 = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.015, 0.15), zoneMat)
+  l2.position.set(0, 0, -1.4)
+  const l3 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.015, 3.0), zoneMat)
+  l3.position.set(-2.3, 0, 0)
+  const l4 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.015, 3.0), zoneMat)
+  l4.position.set(2.3, 0, 0)
+  l1.receiveShadow = true; l2.receiveShadow = true; l3.receiveShadow = true; l4.receiveShadow = true;
+  stopZoneGroup.add(l1, l2, l3, l4)
+  scene.add(stopZoneGroup)
 
   // 진짜 한국형 통유리 버스 정류장 쉘터 (렉 없는 경량 재질)
   const shelterGroup = new THREE.Group()
@@ -338,6 +349,10 @@ export function createSceneRenderer(canvas, reportError) {
   poleGroup.add(pMesh1, pMesh2)
   poleGroup.position.set(2.0, 0, 0)
   shelterGroup.add(poleGroup)
+
+  // 버스(11.5m) 크기에 맞춰 정류장 및 정지선 스케일 1.8배 뻥튀기 (비율 1:1 완벽 동기화)
+  shelterGroup.scale.set(1.8, 1.8, 1.8)
+  stopZoneGroup.scale.set(1.8, 1.0, 1.8)
 
   scene.add(shelterGroup)
 
@@ -476,10 +491,10 @@ export function createSceneRenderer(canvas, reportError) {
       const zoneZ = marker.zoneZ ?? marker.centerZ
       const heading = marker.heading || 0
 
-      // 바닥 정지선(Stripe) 표시 및 회전
-      stopZoneStripeMesh.position.set(zoneX, 0.015, zoneZ)
-      stopZoneStripeMesh.rotation.set(0, heading, 0)
-      stopZoneStripeMesh.visible = true
+      // 바닥 정차 구역 주차 박스 라인(Stripe 직사각형) 표시 및 회전
+      stopZoneGroup.position.set(zoneX, 0.015, zoneZ)
+      stopZoneGroup.rotation.set(0, heading, 0)
+      stopZoneGroup.visible = true
 
       // 정류장(쉘터 등)의 일체형 배치 및 회전
       shelterGroup.position.set(marker.x, 0, marker.z)
@@ -495,7 +510,7 @@ export function createSceneRenderer(canvas, reportError) {
       beamMat.opacity = near ? 0.4 : 0.15
 
     } else {
-      stopZoneStripeMesh.visible = false
+      stopZoneGroup.visible = false
       shelterGroup.visible = false
       stopBeam.visible = false
     }

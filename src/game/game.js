@@ -79,7 +79,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     }
     hud.setTimer(state.missionTime, state.mode, 's')
     hud.setTelemetry({
-      speed: state.speed,
+      speed: Math.abs(state.speed),
       speedMax: state.speedMax,
       stopHold: state.stopHoldTime
     })
