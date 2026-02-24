@@ -162,10 +162,11 @@ export function createSceneRenderer(canvas, reportError) {
   const grassOuter = shoulderOuter + grassWidth
 
   // 차선 대쉬 (매 프레임 생성하던 악성 버그 제거, 1번만 할당하여 재사용)
+  // Three.js PlaneGeometry는 기본이 XY평면이므로 바닥에 눕히면 Y축 높이가 Z축 길이가 됨.
   const laneGeo = new THREE.PlaneGeometry(0.24, 2.4)
-  laneGeo.rotateX(-Math.PI / 2) // 땅을 보게
+  laneGeo.rotateX(-Math.PI / 2) // 땅을 보게 눕히면 너비(0.24)는 X, 높이(2.4)는 Z가 됨.
   const MAX_LANES = 600
-  const laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.lane, MAX_LANES)
+  const laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.laneYellow, MAX_LANES)
   laneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
   laneInstancedMesh.frustumCulled = false
   scene.add(laneInstancedMesh)
@@ -345,30 +346,24 @@ export function createSceneRenderer(canvas, reportError) {
     ribbons.rumbleL.update(samples, -rumbleOuter, -roadHalf, 0.08)
     ribbons.rumbleR.update(samples, roadHalf, rumbleOuter, 0.08)
 
-    // 2. 차선 업데이트 
+    // 2. 차선 업데이트 (프레임 드랍 원인 제거: 매 프레임 Color Update는 극한의 부하. 단일 노란색 재질로 통일시켜 해결)
     let laneIdx = 0
-    // 노란색 이중 중앙선 (고퀄리티 차선 구현)
+    // 끊어지는 대쉬 라인(한국형 노란 중앙선) 복구 및 % 연산으로 오버랩/렉 원천 차단
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i]
-      if (s.i > 2 && laneIdx < MAX_LANES - 2) {
-        // 중앙선 1
+      // 5칸 주기 중 3칸만 그리고 2칸 비워 점선(대쉬) 효과 
+      if (s.i > 2 && s.segmentIndex % 5 < 3 && laneIdx < MAX_LANES) {
         dummyMatrix.identity()
+        dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
+        // 원본과 완벽하게 똑같이 차선이 굽이지는 방향으로 회전 적용
         dummyMatrix.makeRotationY(-s.heading)
-        dummyMatrix.setPosition(s.centerX - 0.2, 0.08, s.centerZ)
-        laneInstancedMesh.setMatrixAt(laneIdx, dummyMatrix)
-        laneInstancedMesh.setColorAt(laneIdx++, new THREE.Color(0xf5cf36))
-
-        // 중앙선 2
-        dummyMatrix.identity()
-        dummyMatrix.makeRotationY(-s.heading)
-        dummyMatrix.setPosition(s.centerX + 0.2, 0.08, s.centerZ)
-        laneInstancedMesh.setMatrixAt(laneIdx, dummyMatrix)
-        laneInstancedMesh.setColorAt(laneIdx++, new THREE.Color(0xf5cf36))
+        dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
+        laneInstancedMesh.setMatrixAt(laneIdx++, dummyMatrix)
       }
     }
     laneInstancedMesh.count = laneIdx
     laneInstancedMesh.instanceMatrix.needsUpdate = true
-    laneInstancedMesh.instanceColor.needsUpdate = true
+    // instanceColor 조작 제거로 M1 Max 렉 완벽 해결
 
     // 3. 배경 프랍 배치
     const props = state.props || []
