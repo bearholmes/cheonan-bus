@@ -408,42 +408,76 @@ body,
   width: 4px;
 }
 
-/* 레이싱 게임 스타일 속도계 완벽 구현 (Bottom Center) */
+/* 진짜 포르자 호라이즌 스타일의 미니멀 & 아크 스포티 HUD (Bottom Right) */
 .hud-speed-row {
   position: fixed;
-  bottom: 15px;
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 30px;
+  right: 50px;
+  left: auto;
+  transform: none;
   display: flex;
   align-items: baseline;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 8px;
   z-index: 10;
-  background: rgba(10, 16, 24, 0.85); /* 레이싱 UI 다크 패널 */
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 12px 30px;
-  border-radius: 30px; /* 둥근 캡슐 형태 */
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  font-style: italic;
+  /* 스포츠 다이내믹 */
 }
 
 .hud-speed-value {
-  font-size: 34px; /* 더 크고 스포티하게 */
-  font-weight: 800;
-  color: #fff; /* 순백색 디지털 메터 */
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.4); /* 자체 발광 글로우 */
-  letter-spacing: -2px;
+  font-size: 68px;
+  /* 초거대 디지털 폰트 */
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8), 0 0 15px rgba(255, 255, 255, 0.5);
+  /* 발광 효과 */
+  letter-spacing: -3px;
 }
 
 .hud-speed-unit {
-  font-size: 14px;
-  color: #87a9be;
-  font-weight: 700;
+  font-size: 20px;
+  color: #7dc9ff;
+  font-weight: 800;
   text-transform: uppercase;
+  text-shadow: 1px 1px 0px rgba(0, 0, 0, 0.8);
 }
 
-/* 속도가 올라가면 니트로 효과처럼 진하게 변경 */
+.hud-meter {
+  position: fixed;
+  bottom: 18px;
+  right: 50px;
+  left: auto;
+  transform: skewX(-20deg);
+  /* 호라이즌 특유의 눕혀진 RPM 게이지 스타일 */
+  width: 200px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+  z-index: 9;
+}
+
+.hud-meter-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, #54c8ff, #ffffff);
+  transition: width 90ms linear;
+  box-shadow: 0 0 12px #54c8ff;
+}
+
+/* 속도가 올라가면 강렬한 레드 글로우 패스 */
 .speed-high .hud-speed-value {
-  color: #ff5500;
-  text-shadow: 0 0 15px rgba(255, 85, 0, 0.6);
+  color: #ff3b3b;
+  text-shadow: 2px 2px 0px rgba(0, 0, 0, 0.8), 0 0 25px rgba(255, 59, 59, 0.8);
+}
+
+.speed-high~.hud-meter .hud-meter-fill {
+  background: linear-gradient(90deg, #ff3b3b, #ffffff);
+  box-shadow: 0 0 15px #ff3b3b;
 }
