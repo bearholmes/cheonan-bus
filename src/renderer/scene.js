@@ -58,14 +58,14 @@ export function createSceneRenderer(canvas, reportError) {
     stopBeam: new THREE.MeshBasicMaterial({ color: 0xfa5940, transparent: true, opacity: 0.7 }),
     stopPillar: new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.6 }),
 
-    // 버스 부품 (유리와 금속 느낌 강화)
-    busBody: new THREE.MeshStandardMaterial({ color: 0x1f9440, roughness: 0.4, metalness: 0.1 }),
+    // 버스 부품 (반사를 줘서 입체감을 살린 페인트 및 금속 재질)
+    busBody: new THREE.MeshStandardMaterial({ color: 0x247a3f, roughness: 0.2, metalness: 0.3 }),
     busUpper: new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.3 }),
-    busWindow: new THREE.MeshStandardMaterial({ color: 0x2473a6, roughness: 0.1, metalness: 0.8, transparent: true, opacity: 0.8 }), // 반사율 높은 유리
+    busWindow: new THREE.MeshStandardMaterial({ color: 0x10212e, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.85 }),
     busRoof: new THREE.MeshStandardMaterial({ color: 0xd9d9d9, roughness: 0.6 }),
-    busBumper: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.8 }),
-    wheelRim: new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.5, metalness: 0.6 }),
-    wheelTire: new THREE.MeshStandardMaterial({ color: 0x0f0f12, roughness: 0.9 })
+    busBumper: new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
+    wheelRim: new THREE.MeshStandardMaterial({ color: 0x888888, roughness: 0.4, metalness: 0.7 }),
+    wheelTire: new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 })
   }
 
   // 지형 초기화
@@ -171,7 +171,7 @@ export function createSceneRenderer(canvas, reportError) {
     sign: createPropInstanced(new THREE.BoxGeometry(2.6, 1.3, 0.26), materials.sign),
   }
 
-  // 4. 버스 조립 (Group 기반) - 진짜 버스 비율에 맞춘 Box 구성
+  // 4. 버스 조립 (Group 기반) - 실제 대형 버스(운전석이 낮고 차체가 긴) 비율 적용
   const busGroup = new THREE.Group()
 
   function addPart(geo, mat, x, y, z, castShadow = true) {
@@ -183,16 +183,20 @@ export function createSceneRenderer(canvas, reportError) {
     return mesh
   }
 
-  // 버스 원점을 지표면에 가깝게 내려 공중부양 해결
-  addPart(new THREE.BoxGeometry(3.0, 1.0, 9.5), materials.busBody, 0, 0.4, 0)
-  addPart(new THREE.BoxGeometry(3.05, 1.0, 9.3), materials.busWindow, 0, 1.4, 0, false)
-  addPart(new THREE.BoxGeometry(2.9, 1.3, 9.5), materials.busUpper, 0, 1.35, 0)
-  addPart(new THREE.BoxGeometry(2.9, 0.2, 9.3), materials.busRoof, 0, 2.1, 0)
-  addPart(new THREE.BoxGeometry(3.1, 0.3, 0.3), materials.busBumper, 0, -0.05, -4.75)
-  addPart(new THREE.BoxGeometry(3.1, 0.3, 0.3), materials.busBumper, 0, -0.05, 4.75)
+  // 버스 메인 바디 (길이 연장, 얄상하게)
+  addPart(new THREE.BoxGeometry(2.8, 1.2, 10.5), materials.busBody, 0, 0.5, 0)
+  // 유리창 (바디보다 살짝 작게, 길게)
+  addPart(new THREE.BoxGeometry(2.85, 1.1, 10.3), materials.busWindow, 0, 1.6, 0, false)
+  // 상단 지붕대
+  addPart(new THREE.BoxGeometry(2.7, 1.3, 10.5), materials.busUpper, 0, 1.5, 0)
+  // 에어컨 루프 (살짝 앞쪽으로 배치)
+  addPart(new THREE.BoxGeometry(2.4, 0.25, 4.0), materials.busRoof, 0, 2.25, -1.0)
+  // 앞뒤 범퍼
+  addPart(new THREE.BoxGeometry(2.9, 0.35, 0.3), materials.busBumper, 0, 0.0, -5.3)
+  addPart(new THREE.BoxGeometry(2.9, 0.35, 0.3), materials.busBumper, 0, 0.0, 5.3)
 
-  // 바퀴 (동적 회전과 조향이 필요하므로 Group으로 별도 관리)
-  const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.5, 16)
+  // 바퀴 ("김밥"처럼 굵은 형태 제거, 반경은 살리고 폭을 얇게)
+  const wheelGeo = new THREE.CylinderGeometry(0.48, 0.48, 0.25, 24)
   wheelGeo.rotateZ(Math.PI / 2) // 실린더를 뉘여서 바퀴 모양으로
   const wheels = []
 
@@ -208,13 +212,13 @@ export function createSceneRenderer(canvas, reportError) {
     wheels.push({ anchor, mesh: w })
   }
 
-  const wheelY = -0.15 // 바닥에 붙도록 높이 조정 (공중부양 픽스)
-  // 전륜 (조향 가능)
-  createWheel(1.5, wheelY, -3.2)
-  createWheel(-1.5, wheelY, -3.2)
-  // 후륜 (이중 타이어)
-  createWheel(1.4, wheelY, 3.0); createWheel(1.8, wheelY, 3.0)
-  createWheel(-1.4, wheelY, 3.0); createWheel(-1.8, wheelY, 3.0)
+  const wheelY = -0.05 // 실제 바닥(-0.5) 근처로 약간 위로 조정
+  // 전륜 (조향 가능, 1축)
+  createWheel(1.4, wheelY, -3.8)
+  createWheel(-1.4, wheelY, -3.8)
+  // 후륜 (이중 타이어, 간격 좁힘)
+  createWheel(1.3, wheelY, 3.4); createWheel(1.6, wheelY, 3.4)
+  createWheel(-1.3, wheelY, 3.4); createWheel(-1.6, wheelY, 3.4)
 
   scene.add(busGroup)
 
@@ -257,34 +261,25 @@ export function createSceneRenderer(canvas, reportError) {
   const quat = new THREE.Quaternion()
   const scaleVec = new THREE.Vector3()
 
-  function draw(state) {
+  function draw(state, dt) {
     const samples = state.roadSamples || []
     if (samples.length < 2) return
-
-    let busIndex = samples.findIndex((s) => s.i === 0)
-    if (busIndex < 0) busIndex = Math.min(15, samples.length - 1)
-
-    const busSample = samples[busIndex]
+    const busSample = samples.find(s => s.i === 0) || samples[Math.min(15, samples.length - 1)]
     const laneOffset = state.renderPlayerX ?? state.playerX ?? 0
-
     const busX = state.renderWorldX ?? state.worldX ?? (busSample.centerX + busSample.rightX * laneOffset)
     const busZ = state.renderWorldZ ?? state.worldZ ?? (busSample.centerZ + busSample.rightZ * laneOffset)
     const busHeading = state.renderWorldYaw ?? state.worldYaw ?? busSample.heading
 
     const forwardX = Math.sin(busHeading)
     const forwardZ = Math.cos(busHeading)
+    const rightX = forwardZ
+    const rightZ = -forwardX
 
-    // 카메라 설정
-    // 카메라: 지나치게 휙휙 도는 현상 개선 및 뒤에서 부드럽게 추격
-    const camAlpha = 0.1
-    const targetCamX = busX - forwardX * 18.0
-    const targetCamZ = busZ - forwardZ * 18.0
+    // 1. 카메라 설정 (이전 순수 WebGL의 고정 시점 코드를 정확히 복구하여 빙빙 도는 현상 원천 차단)
+    camera.position.set(busX - forwardX * 16.8, 5.3, busZ - forwardZ * 16.8)
+    camera.lookAt(busX + forwardX * 40, 0.95, busZ + forwardZ * 40)
 
-    // 단순 Lerp로 카메라 회전이 어지러운 현상 보완, 하지만 즉시 할당으로 방향 충돌 방지
-    camera.position.set(targetCamX, 6.0, targetCamZ)
-    camera.lookAt(busX + forwardX * 30, 0.8, busZ + forwardZ * 30)
-
-    // 그림자 카메라 초점 변경
+    // 조명/그림자 추적
     dirLight.position.set(busX + 60, 150, busZ - 30)
     dirLight.target.position.set(busX, 0, busZ)
     dirLight.target.updateMatrixWorld()
@@ -368,19 +363,18 @@ export function createSceneRenderer(canvas, reportError) {
     }
 
     // 4. 버스 배치 및 바퀴 조향
-    // 4. 버스 배치 및 바퀴 조향
-    const carYaw = -busHeading // Three.js 카메라 기준으로 반전 (카메라가 도는 문제 해결)
-    const carRoll = (state.renderCarRoll ?? state.carRoll ?? 0) * 0.18
-    const carPitch = (state.renderPitch ?? state.pitch ?? 0) * 0.07
+    const carYaw = busHeading + Math.PI // Three.js 카메라와 100% 동일한 회전 동기화를 위해 원본과 똑같이 처리
+    const carRoll = -(state.renderCarRoll ?? state.carRoll ?? 0) * 0.18 // 축 방향을 동일하게 맞춤
+    const carPitch = -(state.renderPitch ?? state.pitch ?? 0) * 0.07
 
-    busGroup.position.set(busX, 0.35, busZ) // 지면 밀착
-    busGroup.rotation.set(carPitch, carYaw, carRoll, 'YXZ')
+    busGroup.position.set(busX, 0.45, busZ) // 지면 밀착
+    busGroup.rotation.set(-carPitch, carYaw, carRoll, 'YXZ')
 
     const steeringValue = state.renderSteeringValue ?? state.steeringValue ?? 0
-    const wheelSpin = -(state.renderDistance ?? state.distance ?? 0) * 0.45
-    const frontSteer = steeringValue * 0.6 // 실제 조향 각도로 스테어링
+    const wheelSpin = (state.renderDistance ?? state.distance ?? 0) * 0.45
+    const frontSteer = steeringValue * 0.35 // 원본 조향 각도 배율
 
-    // 조향(Y축)과 굴러감(X축)을 분리하여 축 꼬임 방지
+    // 조향(Y축)과 굴러감(X축) 분리
     wheels[0].anchor.rotation.y = frontSteer
     wheels[1].anchor.rotation.y = frontSteer
 
