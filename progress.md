@@ -30,3 +30,15 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - UI Revision: simplified start screen to title-focused composition only (`천안 버스 / BUSDRIVE SHIFT` + START button), removing helper-style subtitle/kicker/hint blocks that felt inconsistent with gameplay tone.
 - UI Revision: tightened start-screen CSS to HUD-consistent palette and pixel typography, centered composition, reduced visual clutter.
 - Validation: `npm run build` passes after simplification (same existing Node version warning).
+- Gameplay Patch: stop interaction now requires both conditions: inside stop box and within 15m radius (`STOP_ZONE_HALF_*`, `STOP_SERVICE_RADIUS`) using world-space stop interaction check.
+- Gameplay Patch: boarding/alighting changed from instant batch to per-passenger flow (`STOP_FLOW_INTERVAL`) with per-stop demand generation (boarding + drop-off), including no-demand dwell branch.
+- Gameplay Patch: mission loop clarified and connected: success on `stageStopsDone >= stageStopsTarget` (3 stops), fail on timeout or missed stops reaching 3 (`MAX_MISSED_STOPS`).
+- HUD/UX Patch: HUD stamp now shows `목표 정차 x/3 · 미정차 y/3`; start overlay now includes explicit mission/success/fail rules.
+- Validation: `npm run build` passes.
+- Validation: Playwright loop run via local project client (`.web_game_playwright_client.mjs`) against `http://localhost:4173` with screenshots + state JSON; no console/page errors generated in artifacts (`output/web-game/logic-check-1`, `logic-check-2`).
+- Validation: deterministic state simulation via Node confirms (1) far/outside-box no boarding, (2) in-box stop service increments stop count, (3) third serviced stop triggers success, (4) missed-stop accumulation triggers `missed-stops` end state at 3.
+- Tooling note: skill path client (`$CODEX_HOME/skills/develop-web-game/scripts/web_game_playwright_client.js`) could not import `playwright` in this environment; used repo-local equivalent client to complete required action/screenshot/state/error verification.
+- UI Patch: replaced seat panel from toy-like 6x4 blocks to compact occupancy HUD (count, occupancy bar, empty seats, load rate, strip indicators) in `src/game/hud.js` + `src/style.css`.
+- Gameplay Patch: added score/combo loop hooks for stop clear and render text payload (`score`, `combo`, `bestCombo`) plus miss-stop time penalty reset behavior.
+- Validation: `npm run build` passes after seat/gameplay patches.
+- Validation: Playwright run produced fresh artifacts at `output/web-game/gameplay-refresh-3`; reviewed screenshots for top HUD + seat panel + speedometer bottom-right persistence.
