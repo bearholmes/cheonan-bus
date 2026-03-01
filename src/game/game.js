@@ -73,6 +73,41 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
     startRun(state)
   }
 
+  function buildActionGuide(stopDistance) {
+    if (state.mode !== 'running') {
+      return state.hudLine
+    }
+
+    const speedAbs = Math.abs(state.speed)
+    const pendingDrop = Number.isFinite(state.stopDropPending) ? state.stopDropPending : 0
+    const pendingBoard = Number.isFinite(state.stopBoardPending) ? state.stopBoardPending : 0
+    const hasPendingFlow = pendingDrop + pendingBoard > 0
+
+    if (state.doorOpen) {
+      if (state.stopCanService) {
+        if (hasPendingFlow) {
+          return `정차 유지: 하차 ${pendingDrop}명 · 탑승 ${pendingBoard}명 남음`
+        }
+        return '정차 완료: Space로 문 닫고 출발'
+      }
+      return '위치 오류: 문 닫고 정류장 박스 안으로 다시 정차'
+    }
+
+    if (state.stopCanService) {
+      if (speedAbs < 0.1) return '지금 할 일: Space로 문 열기'
+      return '지금 할 일: 완전히 멈춰서 정차'
+    }
+
+    if (state.stopWithinRadius && !state.stopInsideBox) {
+      return '지금 할 일: 정류장 박스 안쪽으로 차 위치 맞추기'
+    }
+
+    if (stopDistance > 40) {
+      return '지금 할 일: 다음 정류장으로 이동'
+    }
+    return '지금 할 일: 감속해서 정류장 진입'
+  }
+
   function syncHud() {
     if (hudRoot) {
       hudRoot.classList.toggle('hidden', state.mode === 'menu')
@@ -90,10 +125,14 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
 
     // 텍스트 네비게이션(TURN)은 시인성을 위해 생략하거나 간소화함
     hud.setNav('', stopDistance, urgency)
-    hud.setMessage(state.hudLine)
+    hud.setMessage(buildActionGuide(stopDistance))
     const stageDone = Number.isFinite(state.stageStopsDone) ? state.stageStopsDone : 0
     const stageTarget = Number.isFinite(state.stageStopsTarget) ? state.stageStopsTarget : 0
-    hud.setStamp(`구간 ${stageDone}/${stageTarget}`)
+    const missedStops = Number.isFinite(state.missedStops) ? state.missedStops : 0
+    const remainMissChance = Math.max(0, 3 - missedStops)
+    const score = Number.isFinite(state.score) ? Math.max(0, Math.round(state.score)) : 0
+    const combo = Number.isFinite(state.stopCombo) ? Math.max(0, state.stopCombo) : 0
+    hud.setStamp(`정차 ${stageDone}/${stageTarget} · 실패까지 ${remainMissChance}회 · 점수 ${score} · 콤보 x${combo}`)
     if (state.toastSeq > lastToastSeq) {
       hud.showToast(state.toastMessage, state.toastKind)
       lastToastSeq = state.toastSeq
@@ -116,7 +155,9 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
               : state.result === 'offroad'
                 ? '차량 이탈'
                 : '종료'
-      endSummary.textContent = `${label} · 승객 ${state.passengers}/${state.targetPassengers} · 정류장 ${state.stopsServed} · 미정차 ${state.missedStops ?? 0}`
+      const score = Number.isFinite(state.score) ? Math.max(0, Math.round(state.score)) : 0
+      const bestCombo = Number.isFinite(state.bestStopCombo) ? Math.max(0, state.bestStopCombo) : 0
+      endSummary.textContent = `${label} · 점수 ${score} · 최대콤보 x${bestCombo} · 목표 정차 ${stageDone}/${stageTarget} · 미정차 ${missedStops}/3 · 승객 ${state.passengers}/${state.targetPassengers}`
     }
   }
 

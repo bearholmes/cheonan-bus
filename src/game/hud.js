@@ -133,61 +133,75 @@ export function createHud(rootElement) {
   function setSeats(seats) {
     let seatingElement = rootElement.querySelector('[data-role="seating"]')
 
-    // Safety: Create if missing (e.g. if HTML didn't update)
     if (!seatingElement) {
       seatingElement = document.createElement('div')
       seatingElement.className = 'hud-seating'
       seatingElement.dataset.role = 'seating'
-      // Insert before status message
       const msgParams = rootElement.querySelector('[data-role="message"]')
       if (msgParams) rootElement.insertBefore(seatingElement, msgParams)
       else rootElement.appendChild(seatingElement)
     }
 
-    // Force clear and rebuild if it doesn't look right (e.g. missing label)
-    // Just simple check: if no children, build.
-    if (!seatingElement.hasChildNodes() || seatingElement.children.length < 2) {
-      seatingElement.innerHTML = '' // Reset
-      const label = document.createElement('div')
-      label.textContent = '좌석 현황'
-      label.style.fontSize = '10px'
-      label.style.color = '#6b8c9e'
-      label.style.textAlign = 'center'
-      label.style.marginBottom = '4px'
-      seatingElement.appendChild(label)
+    if (seatingElement.dataset.ui !== 'compact') {
+      seatingElement.innerHTML = ''
+      seatingElement.dataset.ui = 'compact'
 
-      // 6 rows, 4 seats per row (2 left, 2 right)
-      // Total 24 seats
-      for (let r = 0; r < 6; r++) {
-        const row = document.createElement('div')
-        row.className = 'seat-row'
-        // Left side
-        for (let c = 0; c < 2; c++) {
-          const seat = document.createElement('div')
-          seat.className = 'seat'
-          seat.dataset.index = r * 4 + c
-          row.appendChild(seat)
-        }
-        // Aisle
-        const aisle = document.createElement('div')
-        aisle.className = 'seat-aisle'
-        row.appendChild(aisle)
-        // Right side
-        for (let c = 2; c < 4; c++) {
-          const seat = document.createElement('div')
-          seat.className = 'seat'
-          seat.dataset.index = r * 4 + c
-          row.appendChild(seat)
-        }
-        seatingElement.appendChild(row)
+      const head = document.createElement('div')
+      head.className = 'seating-head'
+      const title = document.createElement('span')
+      title.className = 'seating-title'
+      title.textContent = '좌석'
+      const count = document.createElement('span')
+      count.className = 'seating-count'
+      count.dataset.role = 'seat-count'
+      head.append(title, count)
+
+      const meter = document.createElement('div')
+      meter.className = 'seating-meter'
+      const meterFill = document.createElement('div')
+      meterFill.className = 'seating-fill'
+      meterFill.dataset.role = 'seat-fill'
+      meter.appendChild(meterFill)
+
+      const meta = document.createElement('div')
+      meta.className = 'seating-meta'
+      const left = document.createElement('span')
+      left.className = 'seating-left'
+      left.dataset.role = 'seat-left'
+      const load = document.createElement('span')
+      load.className = 'seating-load'
+      load.dataset.role = 'seat-load'
+      meta.append(left, load)
+
+      const strip = document.createElement('div')
+      strip.className = 'seating-strip'
+      for (let i = 0; i < seats.length; i += 1) {
+        const seat = document.createElement('div')
+        seat.className = 'seat-dot'
+        seat.dataset.index = String(i)
+        strip.appendChild(seat)
       }
+
+      seatingElement.append(head, meter, meta, strip)
     }
 
-    // Update state
-    const seatNodes = seatingElement.querySelectorAll('.seat')
+    const seatNodes = seatingElement.querySelectorAll('.seat-dot')
+    const occupied = seats.reduce((acc, seated) => acc + (seated ? 1 : 0), 0)
+    const total = Math.max(1, seats.length)
+    const fillPct = clamp(occupied / total, 0, 1)
+    const countNode = seatingElement.querySelector('[data-role="seat-count"]')
+    const fillNode = seatingElement.querySelector('[data-role="seat-fill"]')
+    const leftNode = seatingElement.querySelector('[data-role="seat-left"]')
+    const loadNode = seatingElement.querySelector('[data-role="seat-load"]')
+
+    if (countNode) countNode.textContent = `${occupied}/${total}`
+    if (fillNode) fillNode.style.width = `${Math.round(fillPct * 100)}%`
+    if (leftNode) leftNode.textContent = `빈좌석 ${Math.max(0, total - occupied)}석`
+    if (loadNode) loadNode.textContent = `탑승률 ${Math.round(fillPct * 100)}%`
+
     seats.forEach((isOccupied, i) => {
       if (seatNodes[i]) {
-        seatNodes[i].classList.toggle('occupied', isOccupied)
+        seatNodes[i].classList.toggle('occupied', isOccupied === true)
       }
     })
   }
