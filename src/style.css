@@ -233,42 +233,22 @@ body,
   text-align: left;
 }
 
-.overlay-card-start h1 {
-  margin: 0 0 20px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0px;
+.start-intro-img {
+  width: 90vw;
+  max-width: 950px;
+  height: auto;
+  margin-bottom: 0px;
+  filter: drop-shadow(0 0 20px rgba(0, 0, 0, 0.5));
 }
 
-/* 압도적인 거대 타이포그래피 */
-.start-title-ko {
-  font-size: 110px;
-  font-weight: 900;
-  line-height: 1;
-  color: #ffffff;
-  letter-spacing: -6px;
-  font-family: inherit;
-  font-style: italic;
-  text-shadow: 4px 4px 0 #000;
-}
-
-.start-title-en {
-  font-size: 28px;
-  letter-spacing: 0.3em;
-  color: #54c8ff;
-  font-weight: 800;
-  text-transform: uppercase;
-  font-family: inherit;
-  margin-top: -10px;
-  margin-left: 10px;
-  text-shadow: 2px 2px 0 #000;
-}
 
 /* 촌스러운 박스 버튼을 버리고 콘솔 레이싱 스타일의 텍스트 깜빡임 UI로 변경 */
 .overlay-card-start button {
   pointer-events: auto;
   cursor: pointer;
-  margin-top: 50px;
+  margin-top: 10px;
+  margin-left: 80px;
+  /* Align with the text inside the SVG */
   background: transparent;
   border: none;
   box-shadow: none;
@@ -335,14 +315,6 @@ body,
   .overlay-card-start button {
     min-width: 0;
     width: 100%;
-  }
-
-  .start-title-ko {
-    font-size: clamp(26px, 12vw, 40px);
-  }
-
-  .start-title-en {
-    letter-spacing: 0.08em;
   }
 }
 

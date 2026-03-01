@@ -11,10 +11,7 @@ app.innerHTML = `
   <div id="start-overlay" class="overlay overlay-start">
     <div class="start-aura" aria-hidden="true"></div>
     <div class="overlay-card overlay-card-start">
-      <h1>
-        <span class="start-title-ko">천안 버스</span>
-        <span class="start-title-en">BUSDRIVE SHIFT</span>
-      </h1>
+      <img src="/intro-bus.svg" class="start-intro-img" alt="천안 버스" />
       <button id="start-btn" type="button">
         <span>START SHIFT</span>
         <small>ENTER / CLICK</small>

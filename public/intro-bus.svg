@@ -1,0 +1,176 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 600" width="100%" height="100%" style="background: transparent;">
+  <defs>
+    <style>
+      @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+      
+      .title-ko {
+        font-family: 'Pretendard', sans-serif;
+        font-size: 110px;
+        font-weight: 900;
+        fill: #ecf8ff;
+        text-shadow: 0px 8px 16px rgba(0,0,0,0.6);
+        opacity: 0;
+        animation: fadeUp 1s 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      
+      .title-en {
+        font-family: 'Pretendard', sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        fill: #54c8ff;
+        letter-spacing: 0.3em;
+        opacity: 0;
+        animation: fadeUp 1s 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      
+      .bus-wrap {
+        animation: busBob 0.6s infinite alternate ease-in-out;
+      }
+      
+      .wheel {
+        animation: spin 0.8s infinite linear;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+      
+      .cityscape {
+        animation: scrollLeft 40s infinite linear;
+      }
+      
+      .trees {
+        animation: scrollLeft 20s infinite linear;
+      }
+      
+      .road-line {
+        stroke-dasharray: 80, 40;
+        animation: roadScroll 0.5s infinite linear;
+      }
+      
+      @keyframes busBob {
+        from { transform: translateY(0); }
+        to { transform: translateY(6px); }
+      }
+      
+      @keyframes spin {
+        100% { transform: rotate(360deg); }
+      }
+      
+      @keyframes scrollLeft {
+        from { transform: translateX(0); }
+        to { transform: translateX(-1200px); }
+      }
+      
+      @keyframes roadScroll {
+        from { stroke-dashoffset: 0; }
+        to { stroke-dashoffset: 120; }
+      }
+      
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+    </style>
+  </defs>
+
+  <!-- Far Background / Cityscape -->
+  <g class="cityscape" fill="#1b2a38" opacity="0.8">
+    <rect x="50" y="240" width="100" height="200" rx="4" />
+    <rect x="180" y="150" width="140" height="290" rx="4" />
+    <rect x="350" y="200" width="110" height="240" rx="4" />
+    <rect x="520" y="100" width="160" height="340" rx="4" />
+    <rect x="740" y="220" width="130" height="220" rx="4" />
+    <rect x="920" y="160" width="150" height="280" rx="4" />
+    <rect x="1100" y="260" width="80" height="180" rx="4" />
+    
+    <rect x="1250" y="240" width="100" height="200" rx="4" />
+    <rect x="1380" y="150" width="140" height="290" rx="4" />
+    <rect x="1550" y="200" width="110" height="240" rx="4" />
+    <rect x="1720" y="100" width="160" height="340" rx="4" />
+    <rect x="1940" y="220" width="130" height="220" rx="4" />
+    <rect x="2120" y="160" width="150" height="280" rx="4" />
+    <rect x="2300" y="260" width="80" height="180" rx="4" />
+  </g>
+
+  <!-- Mid Background / Trees -->
+  <g class="trees" fill="#2c4c3b" opacity="0.9">
+    <circle cx="100" cy="400" r="40" />
+    <circle cx="140" cy="420" r="30" />
+    <circle cx="400" cy="380" r="50" />
+    <circle cx="450" cy="410" r="35" />
+    <circle cx="800" cy="390" r="45" />
+    <circle cx="860" cy="420" r="25" />
+    <circle cx="1150" cy="400" r="40" />
+    
+    <circle cx="1300" cy="400" r="40" />
+    <circle cx="1340" cy="420" r="30" />
+    <circle cx="1600" cy="380" r="50" />
+    <circle cx="1650" cy="410" r="35" />
+    <circle cx="2000" cy="390" r="45" />
+    <circle cx="2060" cy="420" r="25" />
+    <circle cx="2350" cy="400" r="40" />
+  </g>
+
+  <!-- Road -->
+  <rect x="0" y="440" width="1200" height="60" fill="#1a1f24" />
+  <line x1="0" y1="470" x2="1200" y2="470" stroke="#ffeb3b" stroke-width="6" class="road-line" />
+
+  <!-- The Cheonan Bus (Flat Vector Style) -->
+  <g class="bus-wrap" transform="translate(500, 220)">
+    <!-- Shadow -->
+    <ellipse cx="210" cy="240" rx="220" ry="12" fill="rgba(0,0,0,0.6)" />
+    
+    <!-- Bus Body (Blue #1c7ed6 matched with Cyan accents) -->
+    <rect x="0" y="0" width="420" height="190" rx="25" fill="#3088d8" />
+    <path d="M 390 0 L 420 25 L 420 190 L 390 190 Z" fill="#3088d8" />
+    
+    <!-- Bottom styling -->
+    <rect x="0" y="160" width="420" height="30" rx="8" fill="#1c558c" />
+    <rect x="0" y="130" width="420" height="12" fill="#d7efff" />
+    
+    <!-- Windows -->
+    <rect x="25" y="25" width="60" height="75" rx="8" fill="#0b2b4d" />
+    <rect x="100" y="25" width="60" height="75" rx="8" fill="#0b2b4d" />
+    <rect x="175" y="25" width="60" height="75" rx="8" fill="#0b2b4d" />
+    <rect x="250" y="25" width="60" height="75" rx="8" fill="#0b2b4d" />
+    
+    <!-- Front Windshield -->
+    <path d="M 325 25 L 385 25 C 400 25 405 40 405 60 L 405 100 L 325 100 Z" fill="#0b2b4d" />
+    <polygon points="340,30 365,30 375,95 350,95" fill="rgba(84, 200, 255, 0.2)" />
+    
+    <!-- Doors -->
+    <rect x="330" y="105" width="50" height="85" rx="4" fill="#166aa8" />
+    <line x1="355" y1="105" x2="355" y2="190" stroke="#0b2b4d" stroke-width="2" />
+
+    <!-- Headlight -->
+    <rect x="400" y="150" width="20" height="16" rx="6" fill="#fff26f" />
+    <path d="M 420 158 L 700 100 L 700 200 Z" fill="rgba(255, 242, 111, 0.15)" />
+    
+    <!-- Taillight -->
+    <rect x="0" y="150" width="12" height="20" rx="4" fill="#ff3b3b" />
+    
+    <!-- Wheels -->
+    <g transform="translate(90, 190)">
+      <circle cx="0" cy="0" r="35" fill="#111" />
+      <circle cx="0" cy="0" r="20" fill="#adb5bd" />
+      <g class="wheel">
+        <circle cx="0" cy="0" r="20" fill="none" stroke="#495057" stroke-width="6" stroke-dasharray="12, 12" />
+        <circle cx="0" cy="0" r="8" fill="#495057" />
+      </g>
+    </g>
+    
+    <g transform="translate(340, 190)">
+      <circle cx="0" cy="0" r="35" fill="#111" />
+      <circle cx="0" cy="0" r="20" fill="#adb5bd" />
+      <g class="wheel">
+        <circle cx="0" cy="0" r="20" fill="none" stroke="#495057" stroke-width="6" stroke-dasharray="12, 12" />
+        <circle cx="0" cy="0" r="8" fill="#495057" />
+      </g>
+    </g>
+  </g>
+
+  <!-- Typography overlaid directly onto the left half -->
+  <g transform="translate(80, 280)">
+    <text x="0" y="0" class="title-ko">천안 버스</text>
+    <text x="10" y="55" class="title-en">BUSDRIVE SHIFT</text>
+  </g>
+</svg>
