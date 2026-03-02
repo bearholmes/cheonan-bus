@@ -36,8 +36,8 @@ const IMPACT_SCORE_PENALTY = 220
 const SIMPLE_RULES = true
 
 const SEGMENT_LENGTH = 2.6
-const VISIBLE_SEGMENTS = 132
-const BACK_VISIBLE_SEGMENTS = 28
+const VISIBLE_SEGMENTS = 84
+const BACK_VISIBLE_SEGMENTS = 16
 const TRACK_RUN_DISTANCE = 30000
 
 const DEFAULT_CURVE_ZONES = [
@@ -200,6 +200,7 @@ function computeStopInteraction(state) {
   const radialDistance = Math.hypot(lateralDelta, forwardDelta)
   const insideBox = Math.abs(lateralDelta) <= STOP_ZONE_HALF_WIDTH && Math.abs(forwardDelta) <= STOP_ZONE_HALF_LENGTH
   const withinRadius = Math.abs(forwardDelta) <= STOP_SERVICE_RADIUS
+  const canService = insideBox && withinRadius
 
   return {
     radialDistance,
