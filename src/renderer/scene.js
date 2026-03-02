@@ -373,15 +373,15 @@ export function createSceneRenderer(canvas, reportError) {
   const ENABLE_PROPS = true
   const ENABLE_DECOR_RIBBONS = true
   const ENABLE_GRASS_RIBBONS = false
-  const LINE_BACK_CULL = -90
-  const LINE_FAR_BASE = 280
-  const LINE_FAR_SPEED_SCALE = 2.4
-  const LINE_FAR_MAX_BONUS = 240
-  const PROP_BACK_CULL = -90
-  const PROP_FAR_BASE = 280
-  const PROP_FAR_SPEED_SCALE = 2.4
-  const PROP_FAR_MAX_BONUS = 240
-  const PROP_SIDE_CULL = 170
+  const LINE_BACK_CULL = -150
+  const LINE_FAR_BASE = 420
+  const LINE_FAR_SPEED_SCALE = 2.8
+  const LINE_FAR_MAX_BONUS = 360
+  const PROP_BACK_CULL = -150
+  const PROP_FAR_BASE = 400
+  const PROP_FAR_SPEED_SCALE = 2.8
+  const PROP_FAR_MAX_BONUS = 340
+  const PROP_SIDE_CULL = 260
   const decorSamples = []
 
   function draw(state, dt) {
@@ -393,14 +393,35 @@ export function createSceneRenderer(canvas, reportError) {
     const busX = state.renderWorldX ?? state.worldX ?? (busSample.centerX + busSample.rightX * laneOffset)
     const busZ = state.renderWorldZ ?? state.worldZ ?? (busSample.centerZ + busSample.rightZ * laneOffset)
     const busHeading = state.renderWorldYaw ?? state.worldYaw ?? busSample.heading
+    const camHeading = busHeading
     const speedAbs = Math.abs(state.speed ?? 0)
     const lineFarCull = LINE_FAR_BASE + Math.min(LINE_FAR_MAX_BONUS, speedAbs * LINE_FAR_SPEED_SCALE)
     const propFarCull = PROP_FAR_BASE + Math.min(PROP_FAR_MAX_BONUS, speedAbs * PROP_FAR_SPEED_SCALE)
 
-    const forwardX = Math.sin(busHeading)
-    const forwardZ = Math.cos(busHeading)
-    const rightX = forwardZ
-    const rightZ = -forwardX
+    const forwardX = Math.sin(camHeading)
+    const forwardZ = Math.cos(camHeading)
+    const cullForwardX = Math.sin(camHeading)
+    const cullForwardZ = Math.cos(camHeading)
+    const cullRightX = cullForwardZ
+    const cullRightZ = -cullForwardX
+
+    // Clamp all decorative visibility to the currently sampled road envelope
+    // so props/edge lines never appear farther than the road itself.
+    let sampleForwardMin = Number.POSITIVE_INFINITY
+    let sampleForwardMax = Number.NEGATIVE_INFINITY
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i]
+      const dx = s.centerX - busX
+      const dz = s.centerZ - busZ
+      const fd = dx * cullForwardX + dz * cullForwardZ
+      if (fd < sampleForwardMin) sampleForwardMin = fd
+      if (fd > sampleForwardMax) sampleForwardMax = fd
+    }
+
+    const effectiveLineBackCull = Math.max(LINE_BACK_CULL, sampleForwardMin - 8)
+    const effectiveLineFarCull = Math.min(lineFarCull, sampleForwardMax + 8)
+    const effectivePropBackCull = Math.max(PROP_BACK_CULL, effectiveLineBackCull)
+    const effectivePropFarCull = Math.min(propFarCull, effectiveLineFarCull + 24)
 
     // 1. 카메라 설정 (이전 순수 WebGL의 고정 시점 코드를 정확히 복구하여 빙빙 도는 현상 원천 차단)
     camera.position.set(busX - forwardX * 16.8, 5.3, busZ - forwardZ * 16.8)
@@ -424,8 +445,8 @@ export function createSceneRenderer(canvas, reportError) {
         const s = samples[i]
         const dx = s.centerX - busX
         const dz = s.centerZ - busZ
-        const forwardDist = dx * forwardX + dz * forwardZ
-        if (forwardDist < LINE_BACK_CULL || forwardDist > lineFarCull) continue
+        const forwardDist = dx * cullForwardX + dz * cullForwardZ
+        if (forwardDist < effectiveLineBackCull || forwardDist > effectiveLineFarCull) continue
         decorSamples[decorCount++] = s
       }
       decorSamples.length = decorCount
@@ -481,9 +502,9 @@ export function createSceneRenderer(canvas, reportError) {
       for (const prop of props) {
         // 카메라 뒤 멀리 있는건 Culling 하되, 가시거리를 대폭 넓혀 팝인(갑자기 나타남) 현상 방지
         const dx = prop.x - busX; const dz = prop.z - busZ
-        const forwardDist = dx * forwardX + dz * forwardZ
-        if (forwardDist < PROP_BACK_CULL || forwardDist > propFarCull) continue
-        const sideDist = Math.abs(dx * rightX + dz * rightZ)
+        const forwardDist = dx * cullForwardX + dz * cullForwardZ
+        if (forwardDist < effectivePropBackCull || forwardDist > effectivePropFarCull) continue
+        const sideDist = Math.abs(dx * cullRightX + dz * cullRightZ)
         if (sideDist > PROP_SIDE_CULL) continue
 
 
