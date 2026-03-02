@@ -68,3 +68,24 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Stop Logic Investigation: reproduced failure cases where bus appeared aligned but `stopCanService` stayed false; observed mismatch between rendered marker position and logic coordinates in some runs.
 - Stop Logic Patch: stop interaction now prefers `state.stopMarker` (rendered marker) world coordinates for box/radius checks to align on-screen line and gameplay 판정.
 - Steering/Path Stability Patch: added light lane/heading assist when no steering input to reduce curve drift accumulation that made stop approach inconsistent.
+- Performance Patch (2026-03-02): disabled runtime shadow pipeline in `src/renderer/scene.js` (`renderer.shadowMap.enabled=false`, `dirLight.castShadow=false`, static meshes `cast/receiveShadow=false`) and enabled culling on instanced/lane meshes to reduce per-frame GPU/CPU workload.
+- Performance Patch (2026-03-02): removed per-frame ribbon bound recalculation (`computeBoundingBox`/`computeBoundingSphere`) from `DynamicRibbon.update`.
+- Performance Patch (2026-03-02): removed marker lookup search in draw loop and switched to deterministic sample index for camera baseline (`samples[Math.min(15,...)]`) to avoid per-frame array scan.
+- Performance validation pending: run one short gameplay burst + FPS capture around high-speed curvature to confirm stutter reduction.
+- Performance Patch (2026-03-02): reduced renderer load further by removing fog from scene pipeline and lowering camera far plane to 420, plus converting major static road/shoulder/stop materials from `MeshStandardMaterial` to `MeshLambertMaterial` to reduce shading cost.
+- UX Patch (2026-03-02): restyled door state HUD chip (`.hud-door`) to compact badge form to improve readability in-game.
+- Hotfix (2026-03-02): background/props disappearing was caused by aggressive renderer culling/far-plane tuning. Restored stable visibility in `src/renderer/scene.js` by raising camera far plane to 900 and disabling frustum culling again for dynamic instanced meshes.
+- Hotfix (2026-03-02): reduced driving nausea/jitter by adding light camera follow smoothing in `src/renderer/scene.js` (position/look target interpolation).
+- HUD Patch (2026-03-02): reverted oversized HUD scaling in `src/style.css` to compact racing-style density (reduced panel width/padding/gaps and timer/nav/stamp/door text sizes).
+- Skill check (2026-03-02): attempted `$WEB_GAME_CLIENT` run against `http://localhost:5173`, but failed due missing package `playwright` in skill runtime (`ERR_MODULE_NOT_FOUND`).
+- HUD Patch (2026-03-02): replaced door text UI with compact status chip (`DOOR`, `OPEN/CLOSED` + color dot) in `src/main.js`, `src/game/hud.js`, `src/style.css` to improve readability without enlarging HUD.
+- Performance Patch (2026-03-02): reduced hitch spikes in main loop by clamping frame delta to `0.12s`, limiting catch-up updates to `MAX_SUBSTEPS=4`, and clamping leftover accumulator in `src/game/game.js`.
+- Performance Patch (2026-03-02): reduced per-frame road sampling load (`VISIBLE_SEGMENTS: 132 -> 96`, `BACK_VISIBLE_SEGMENTS: 28 -> 20`) in `src/game/state.js`.
+- Performance Patch (2026-03-02): lowered renderer per-frame instance work in `src/renderer/scene.js` (`MAX_LANES: 600 -> 380`, `MAX_INSTANCES: 500 -> 280`, prop forward range upper bound `800 -> 520`, low-poly prop materials changed to Lambert).
+- Skill check (2026-03-02): reran `$WEB_GAME_CLIENT` after performance patch; still fails with `ERR_MODULE_NOT_FOUND` for `playwright` from skill script path.
+- Hotfix (2026-03-02): fixed "start not responding" regression path in `src/game/game.js` by (1) allowing start from overlay click area and (2) avoiding hard `stop()` on frame exceptions so input listeners remain active.
+- Core loop refactor (2026-03-02): replaced fixed-step+interpolation+catch-up with single-step frame loop in `src/game/game.js` (input -> updateState -> buildRoadSamples/buildProps/buildStopMarker -> draw -> syncHud) to remove hitch spikes from substep backlog and render-state mismatch.
+- Performance Patch (2026-03-02): further reduced render workload for stutter: `VISIBLE_SEGMENTS 96->84`, `BACK_VISIBLE_SEGMENTS 20->16`, `MAX_LANES 380->320`, `MAX_INSTANCES 280->200`, lane dash density lowered (`segmentIndex % 6 < 2`), prop forward range `520->420`, and removed camera follow smoothing to eliminate motion lag.
+- Skill check (2026-03-02): `$WEB_GAME_CLIENT` now runs after installing `playwright` under `~/.codex`, but click step failed on `#start-btn` timeout at `http://localhost:5173` (start button not present/ready at run time).
+- Hotfix (2026-03-02): fixed broken render caused by misplaced `heavyFrameToggle` lines outside function scope in `src/renderer/scene.js`; moved update toggle inside `draw()` and removed trailing stray lines.
+- Skill validation (2026-03-02): reran `$WEB_GAME_CLIENT` after clearing old artifacts; `shot-0.png` generated with visible scene and no fresh `errors-0.json` output.

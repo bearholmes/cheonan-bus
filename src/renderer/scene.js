@@ -7,16 +7,15 @@ export function createSceneRenderer(canvas, reportError) {
     powerPreference: 'high-performance'
   })
   renderer.setPixelRatio(1.0)
-  renderer.shadowMap.enabled = true
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  renderer.shadowMap.enabled = false
   renderer.info.autoReset = false
 
   const scene = new THREE.Scene()
   const fogColor = new THREE.Color(0.36, 0.67, 0.93)
   scene.background = fogColor
-  scene.fog = new THREE.FogExp2(fogColor, 0.002)
+  // 성능 우선: 고스트 거리의 거리기반 페이드 제거
 
-  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 800)
+  const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 900)
 
   camera.position.set(0, 10, -50)
   camera.lookAt(0, 0, 0)
@@ -29,9 +28,7 @@ export function createSceneRenderer(canvas, reportError) {
   const dirLight = new THREE.DirectionalLight(0xfffaed, 2.5)
   dirLight.position.set(200, 300, -100)
   // 그림자 풀 퀄리티 (범위 확장 및 해상도 극대화)
-  dirLight.castShadow = true
-  dirLight.shadow.mapSize.width = 4096
-  dirLight.shadow.mapSize.height = 4096
+  dirLight.castShadow = false
   dirLight.shadow.camera.near = 10
   dirLight.shadow.camera.far = 400
   dirLight.shadow.camera.left = -150
@@ -43,10 +40,10 @@ export function createSceneRenderer(canvas, reportError) {
 
   // 도로 재질 (실제 아스팔트 느낌으로 어둡고 거칠게)
   const materials = {
-    ground: new THREE.MeshStandardMaterial({ color: 0x2e4226, roughness: 1.0, metalness: 0.0 }), // 잔디밭
-    road: new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9, metalness: 0.1 }), // 진한 아스팔트
-    shoulder: new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.9 }),
-    rumble: new THREE.MeshStandardMaterial({ color: 0x8a1b1b, roughness: 0.8 }), // 붉은색 럼블 스트립
+    ground: new THREE.MeshLambertMaterial({ color: 0x2e4226 }),
+    road: new THREE.MeshLambertMaterial({ color: 0x222222 }),
+    shoulder: new THREE.MeshLambertMaterial({ color: 0x4a4a4a }),
+    rumble: new THREE.MeshLambertMaterial({ color: 0x8a1b1b }),
     laneYellow: new THREE.MeshBasicMaterial({ color: 0xf5cf36 }), // 중앙선 노란색
     laneWhite: new THREE.MeshBasicMaterial({ color: 0xffffff }), // 일반 차선 흰색
 
@@ -60,11 +57,11 @@ export function createSceneRenderer(canvas, reportError) {
     stopBoard: new THREE.MeshStandardMaterial({ color: 0xf2db3b, roughness: 0.4 }),
     stopBench: new THREE.MeshStandardMaterial({ color: 0x704d2e, roughness: 0.8 }),
     stopBenchLeg: new THREE.MeshStandardMaterial({ color: 0x42382e, roughness: 0.6 }),
-    stopZone: new THREE.MeshStandardMaterial({ color: 0xf2ed59, roughness: 0.9 }),
-    stopZoneStripe: new THREE.MeshStandardMaterial({ color: 0x1a2129, roughness: 0.9 }),
+    stopZone: new THREE.MeshLambertMaterial({ color: 0xf2ed59 }),
+    stopZoneStripe: new THREE.MeshLambertMaterial({ color: 0x1a2129 }),
     stopBeacon: new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 }), // 푸른색 홀로그램 큐브로 변경
     stopBeam: new THREE.MeshBasicMaterial({ color: 0xfa5940, transparent: true, opacity: 0.7 }),
-    stopPillar: new THREE.MeshStandardMaterial({ color: 0x1f2933, roughness: 0.6 }),
+    stopPillar: new THREE.MeshLambertMaterial({ color: 0x1f2933 }),
 
     // 버스 부품 (고해상도 디테일을 위한 재질 세분화)
     busBody: new THREE.MeshStandardMaterial({ color: 0x00a35c, roughness: 0.3, metalness: 0.2 }), // 시내버스 초록색
@@ -85,7 +82,7 @@ export function createSceneRenderer(canvas, reportError) {
   const groundMesh = new THREE.Mesh(groundGeo, materials.ground)
   groundMesh.rotation.x = -Math.PI / 2
   groundMesh.position.y = -0.25 // 원본 베이스라인 높이 복원
-  groundMesh.receiveShadow = true
+  groundMesh.receiveShadow = false
   scene.add(groundMesh)
 
   // 2. 리본 버퍼(차도/인도) 동적 관리를 위한 헬퍼 클래스
@@ -108,7 +105,10 @@ export function createSceneRenderer(canvas, reportError) {
       this.geometry.computeVertexNormals() // 실시간 조명 적용을 위해 필요
 
       this.mesh = new THREE.Mesh(this.geometry, material)
-      this.mesh.receiveShadow = true
+      this.mesh.receiveShadow = false
+      // Dynamic ribbons move with streaming samples; avoid stale-bounds culling
+      // (especially after removing per-frame bounding recomputation).
+      this.mesh.frustumCulled = false
       // scene.add(this.mesh)
     }
 
@@ -132,10 +132,7 @@ export function createSceneRenderer(canvas, reportError) {
       }
 
       this.geometry.attributes.position.needsUpdate = true
-      // 치명적인 렉 원인 재거세 (git reset으로 살아났던 부분): 이를 통해 뚝뚝 끊기는 프레임 드랍 완벽 제거
-      // this.geometry.computeVertexNormals() 
-      this.geometry.computeBoundingSphere()
-      this.geometry.computeBoundingBox()
+      // 치명적인 렉 원인 제거(매 프레임 경계 계산 제거)
       this.geometry.setDrawRange(0, (samples.length - 1) * 6)
     }
   }
@@ -164,19 +161,21 @@ export function createSceneRenderer(canvas, reportError) {
 
   // 차선 대쉬 (명확하게 BoxGeometry로 두께를 주어 축 꼬임에서 완전히 해방됨)
   const laneGeo = new THREE.BoxGeometry(0.18, 0.02, 2.4)
-  const MAX_LANES = 600
+  const MAX_LANES = 320
   const laneInstancedMesh = new THREE.InstancedMesh(laneGeo, materials.laneYellow, MAX_LANES)
   laneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+  // Dynamic instance matrices are updated every frame; keep culling off to avoid
+  // incorrect bounds-based popping/disappearing on curves.
   laneInstancedMesh.frustumCulled = false
   scene.add(laneInstancedMesh)
 
   // 3. 인스턴싱 최적화 헬퍼 (배경 오브젝트들 - 성능 최적화를 위해 그림자 캐스팅 해제)
-  const MAX_INSTANCES = 500
+  const MAX_INSTANCES = 200
   function createPropInstanced(geo, mat) {
     const mesh = new THREE.InstancedMesh(geo, mat, MAX_INSTANCES)
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     mesh.castShadow = false // M1 버벅임의 주범: 수백개 프랍의 그림자 투사를 끔
-    mesh.receiveShadow = true
+    mesh.receiveShadow = false
     mesh.frustumCulled = false
     scene.add(mesh)
     return mesh
@@ -188,8 +187,8 @@ export function createSceneRenderer(canvas, reportError) {
   const towerGeo = new THREE.BoxGeometry(2.4, 10.0, 2.4)
 
   // 고층 빌딩 느낌을 주도록 반사율(roughness) 조정 및 메탈 느낌 추가
-  const lowPolyTowerMat = new THREE.MeshStandardMaterial({ color: 0x3d4a57, flatShading: true, roughness: 0.3, metalness: 0.5 })
-  const lowPolyLeafMat = new THREE.MeshStandardMaterial({ color: 0x1d4722, flatShading: true, roughness: 0.9 })
+  const lowPolyTowerMat = new THREE.MeshLambertMaterial({ color: 0x3d4a57, flatShading: true })
+  const lowPolyLeafMat = new THREE.MeshLambertMaterial({ color: 0x1d4722, flatShading: true })
 
   const propMeshes = {
     treeTrunk: createPropInstanced(treeTrunkGeo, materials.treeTrunk),
@@ -205,8 +204,8 @@ export function createSceneRenderer(canvas, reportError) {
   function addPart(geo, mat, offset, castShadow = true) {
     const mesh = new THREE.Mesh(geo, mat)
     mesh.position.set(...offset)
-    mesh.castShadow = castShadow
-    mesh.receiveShadow = true
+    mesh.castShadow = false
+    mesh.receiveShadow = false
     busGroup.add(mesh)
     return mesh
   }
@@ -261,7 +260,7 @@ export function createSceneRenderer(canvas, reportError) {
     anchor.position.set(x, y, z)
 
     const w = new THREE.Mesh(wheelGeo, materials.wheelTire)
-    w.castShadow = true
+    w.castShadow = false
     anchor.add(w)
 
     busGroup.add(anchor)
@@ -283,8 +282,8 @@ export function createSceneRenderer(canvas, reportError) {
   const sAdd = (geo, mat, x, y, z) => {
     const mesh = new THREE.Mesh(geo, mat)
     mesh.position.set(x, y, z)
-    mesh.castShadow = true
-    mesh.receiveShadow = true
+    mesh.castShadow = false
+    mesh.receiveShadow = false
     stopGroup.add(mesh)
     return mesh
   }
@@ -301,6 +300,7 @@ export function createSceneRenderer(canvas, reportError) {
   const l4 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.015, 3.0), zoneMat)
   l4.position.set(2.3, 0, 0)
   l1.receiveShadow = true; l2.receiveShadow = true; l3.receiveShadow = true; l4.receiveShadow = true;
+  l1.castShadow = false; l2.castShadow = false; l3.castShadow = false; l4.castShadow = false
   stopZoneGroup.add(l1, l2, l3, l4)
   scene.add(stopZoneGroup)
 
@@ -309,8 +309,8 @@ export function createSceneRenderer(canvas, reportError) {
   const shAdd = (geo, mat, x, y, z) => {
     const mesh = new THREE.Mesh(geo, mat)
     mesh.position.set(x, y, z)
-    mesh.castShadow = true
-    mesh.receiveShadow = true
+    mesh.castShadow = false
+    mesh.receiveShadow = false
     shelterGroup.add(mesh)
     return mesh
   }
@@ -341,11 +341,11 @@ export function createSceneRenderer(canvas, reportError) {
   const poleGroup = new THREE.Group()
   const pMesh1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2, 16), materials.stopPole)
   pMesh1.position.set(0, 1.1, 0)
-  pMesh1.castShadow = true
+  pMesh1.castShadow = false
   const pMesh2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.05, 16), new THREE.MeshStandardMaterial({ color: 0x0077ff, roughness: 0.5 }))
   pMesh2.rotation.x = Math.PI / 2
   pMesh2.position.set(0, 2.4, 0)
-  pMesh2.castShadow = true
+  pMesh2.castShadow = false
   poleGroup.add(pMesh1, pMesh2)
   poleGroup.position.set(2.0, 0, 0)
   shelterGroup.add(poleGroup)
@@ -361,6 +361,7 @@ export function createSceneRenderer(canvas, reportError) {
   const quat = new THREE.Quaternion()
   const scaleVec = new THREE.Vector3()
   const Y_AXIS = new THREE.Vector3(0, 1, 0) // 매 프레임 메모리 누수 방지용 상수
+  let heavyFrameToggle = 0
 
   // 렉 없는 초경량 정류장 위치 표시기 복구 (박스 삭제됨)
   const beamMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.2, depthWrite: false })
@@ -370,7 +371,9 @@ export function createSceneRenderer(canvas, reportError) {
   function draw(state, dt) {
     const samples = state.roadSamples || []
     if (samples.length < 2) return
-    const busSample = samples.find(s => s.i === 0) || samples[Math.min(15, samples.length - 1)]
+    heavyFrameToggle = (heavyFrameToggle + 1) & 1
+    const updateHeavy = heavyFrameToggle === 0
+    const busSample = samples[Math.min(15, samples.length - 1)]
     const laneOffset = state.renderPlayerX ?? state.playerX ?? 0
     const busX = state.renderWorldX ?? state.worldX ?? (busSample.centerX + busSample.rightX * laneOffset)
     const busZ = state.renderWorldZ ?? state.worldZ ?? (busSample.centerZ + busSample.rightZ * laneOffset)
@@ -403,64 +406,68 @@ export function createSceneRenderer(canvas, reportError) {
     ribbons.rumbleR.update(samples, roadHalf, rumbleOuter, 0.08)
 
     // 2. 차선 업데이트 (프레임 드랍 원인 제거: 매 프레임 Color Update는 극한의 부하. 단일 노란색 재질로 통일시켜 해결)
-    let laneIdx = 0
-    // 끊어지는 대쉬 라인(한국형 노란 중앙선) 복구 및 % 연산으로 오버랩/렉 원천 차단
-    for (let i = 0; i < samples.length; i++) {
-      const s = samples[i]
-      // 5칸 주기 중 3칸만 그리고 2칸 비워 점선(대쉬) 효과 
-      if (s.i > 2 && s.segmentIndex % 5 < 3 && laneIdx < MAX_LANES) {
-        dummyMatrix.identity()
-        // 차선 꺾임 오류 수정: s.heading 정방향 회전
-        dummyMatrix.makeRotationY(s.heading)
-        dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
-        laneInstancedMesh.setMatrixAt(laneIdx++, dummyMatrix)
+    if (updateHeavy) {
+      let laneIdx = 0
+      // 끊어지는 대쉬 라인(한국형 노란 중앙선) 복구 및 % 연산으로 오버랩/렉 원천 차단
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i]
+        // 5칸 주기 중 3칸만 그리고 2칸 비워 점선(대쉬) 효과 
+        if (s.i > 2 && s.segmentIndex % 6 < 2 && laneIdx < MAX_LANES) {
+          dummyMatrix.identity()
+          // 차선 꺾임 오류 수정: s.heading 정방향 회전
+          dummyMatrix.makeRotationY(s.heading)
+          dummyMatrix.setPosition(s.centerX, 0.08, s.centerZ)
+          laneInstancedMesh.setMatrixAt(laneIdx++, dummyMatrix)
+        }
       }
+      laneInstancedMesh.count = laneIdx
+      laneInstancedMesh.instanceMatrix.needsUpdate = true
     }
-    laneInstancedMesh.count = laneIdx
-    laneInstancedMesh.instanceMatrix.needsUpdate = true
     // instanceColor 조작 제거로 M1 Max 렉 완벽 해결
 
     // 3. 배경 프랍 배치
     const props = state.props || []
     let counts = { treeTrunk: 0, treeLeaves: 0, tower: 0, signPole: 0, sign: 0 }
 
-    for (const prop of props) {
-      // 카메라 뒤 멀리 있는건 Culling 하되, 가시거리를 대폭 넓혀 팝인(갑자기 나타남) 현상 방지
-      const dx = prop.x - busX; const dz = prop.z - busZ
-      const forwardDist = dx * forwardX + dz * forwardZ
-      if (forwardDist < -120 || forwardDist > 800) continue // 표시 한계를 800m 밖으로 확장
+    if (updateHeavy) {
+      for (const prop of props) {
+        // 카메라 뒤 멀리 있는건 Culling 하되, 가시거리를 대폭 넓혀 팝인(갑자기 나타남) 현상 방지
+        const dx = prop.x - busX; const dz = prop.z - busZ
+        const forwardDist = dx * forwardX + dz * forwardZ
+        if (forwardDist < -120 || forwardDist > 420) continue // 표시 한계를 800m 밖으로 확장
 
 
-      const s = prop.scale
-      scaleVec.set(s, s, s)
+        const s = prop.scale
+        scaleVec.set(s, s, s)
 
-      if (prop.kind === 'tree') {
-        if (counts.treeTrunk < MAX_INSTANCES) {
-          dummyMatrix.compose(posVec.set(prop.x, 1.2 * s, prop.z), quat.identity(), scaleVec)
-          propMeshes.treeTrunk.setMatrixAt(counts.treeTrunk++, dummyMatrix)
-          dummyMatrix.compose(posVec.set(prop.x, 3.8 * s, prop.z), quat.identity(), scaleVec)
-          propMeshes.treeLeaves.setMatrixAt(counts.treeLeaves++, dummyMatrix)
-        }
-      } else if (prop.kind === 'tower') {
-        if (counts.tower < MAX_INSTANCES) {
-          dummyMatrix.compose(posVec.set(prop.x, 5.0 * s, prop.z), quat.identity(), scaleVec)
-          propMeshes.tower.setMatrixAt(counts.tower++, dummyMatrix)
-        }
-      } else {
-        // 표지판: GC 렉(버벅임)을 거는 new THREE.Vector3 객체 무한 생성 버그를 상수(Y_AXIS)로 해결
-        quat.setFromAxisAngle(Y_AXIS, -(prop.heading || 0))
-        if (counts.signPole < MAX_INSTANCES) {
-          dummyMatrix.compose(posVec.set(prop.x, 0.95 * s, prop.z), quat, scaleVec)
-          propMeshes.signPole.setMatrixAt(counts.signPole++, dummyMatrix)
-          dummyMatrix.compose(posVec.set(prop.x, 1.9 * s, prop.z), quat, scaleVec)
-          propMeshes.sign.setMatrixAt(counts.sign++, dummyMatrix)
+        if (prop.kind === 'tree') {
+          if (counts.treeTrunk < MAX_INSTANCES) {
+            dummyMatrix.compose(posVec.set(prop.x, 1.2 * s, prop.z), quat.identity(), scaleVec)
+            propMeshes.treeTrunk.setMatrixAt(counts.treeTrunk++, dummyMatrix)
+            dummyMatrix.compose(posVec.set(prop.x, 3.8 * s, prop.z), quat.identity(), scaleVec)
+            propMeshes.treeLeaves.setMatrixAt(counts.treeLeaves++, dummyMatrix)
+          }
+        } else if (prop.kind === 'tower') {
+          if (counts.tower < MAX_INSTANCES) {
+            dummyMatrix.compose(posVec.set(prop.x, 5.0 * s, prop.z), quat.identity(), scaleVec)
+            propMeshes.tower.setMatrixAt(counts.tower++, dummyMatrix)
+          }
+        } else {
+          // 표지판: GC 렉(버벅임)을 거는 new THREE.Vector3 객체 무한 생성 버그를 상수(Y_AXIS)로 해결
+          quat.setFromAxisAngle(Y_AXIS, -(prop.heading || 0))
+          if (counts.signPole < MAX_INSTANCES) {
+            dummyMatrix.compose(posVec.set(prop.x, 0.95 * s, prop.z), quat, scaleVec)
+            propMeshes.signPole.setMatrixAt(counts.signPole++, dummyMatrix)
+            dummyMatrix.compose(posVec.set(prop.x, 1.9 * s, prop.z), quat, scaleVec)
+            propMeshes.sign.setMatrixAt(counts.sign++, dummyMatrix)
+          }
         }
       }
-    }
 
-    for (let key in counts) {
-      propMeshes[key].count = counts[key]
-      propMeshes[key].instanceMatrix.needsUpdate = true
+      for (let key in counts) {
+        propMeshes[key].count = counts[key]
+        propMeshes[key].instanceMatrix.needsUpdate = true
+      }
     }
 
     // 4. 버스 배치 및 바퀴 조향

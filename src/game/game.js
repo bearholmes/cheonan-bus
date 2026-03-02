@@ -44,6 +44,8 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   let helpOpen = false
   let lastTime = performance.now()
   let rafId = 0
+  let propBuildAccumulator = 0
+  const PROP_BUILD_INTERVAL = 1 / 30
   const helpStopsElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-stops"]') : null
   const helpMissedElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-missed"]') : null
   const helpScoreElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-score"]') : null
@@ -89,6 +91,18 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   }
 
   const onStartClick = () => {
+    startRun(state)
+  }
+
+  const onStartPointer = (event) => {
+    if (state.mode !== 'menu') return
+    if (event && typeof event.preventDefault === 'function') event.preventDefault()
+    startRun(state)
+  }
+
+  const onStartOverlayClick = (event) => {
+    if (state.mode !== 'menu') return
+    event.preventDefault()
     startRun(state)
   }
 
@@ -157,116 +171,47 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     }
   }
 
-  function updateAndRender(dt, nowSeconds) {
+  function updateAndRender(dt, nowSeconds, controlsOverride = null) {
     resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
-    const controls = input.read()
+    const controls = controlsOverride || input.read()
     const justPressedAccelerate = controls.accelerate && !prevControls.accelerate
-    // Auto-start only from menu.
-    // Do not auto-restart from ended while keys are still held, which looks like an unexpected reset.
+
     if (state.mode === 'menu' && (controls.accelerate || controls.left || controls.right || controls.brake)) {
       startRun(state)
     } else if (state.mode === 'ended' && justPressedAccelerate) {
-      // Allow intuitive restart with up key, but only on key edge.
       startRun(state)
     }
+
     updateState(state, controls, dt)
+    state.roadSamples = buildRoadSamples(state.distance, state)
+    propBuildAccumulator += dt
+    if (!state.props || state.props.length === 0 || propBuildAccumulator >= PROP_BUILD_INTERVAL) {
+      state.props = buildProps(state.roadSamples, state)
+      propBuildAccumulator = 0
+    }
+    state.stopMarker = buildStopMarker(state)
     renderer.draw(state, nowSeconds)
     syncHud()
     prevControls = { ...controls }
   }
 
-  // [v7.7] Helper for interpolation
-  function lerp(a, b, t) {
-    return a + (b - a) * t
-  }
-
-  function lerpAngle(a, b, t) {
-    let d = b - a
-    while (d > Math.PI) d -= Math.PI * 2
-    while (d < -Math.PI) d += Math.PI * 2
-    return a + d * t
-  }
-
-  // [v7.5] Fixed Timestep Loop (60Hz Physics)
-  const FIXED_STEP = 1 / 60
-  let accumulator = 0
-
   function frame(now) {
     if (stopped) return
 
     let dt = (now - lastTime) / 1000
-    if (dt > 0.25) dt = 0.25
+    if (dt > 0.12) dt = 0.12
     lastTime = now
 
-    accumulator += dt
-
     try {
-      while (accumulator >= FIXED_STEP) {
-        const controls = helpOpen
-          ? { accelerate: false, brake: false, reverse: false, left: false, right: false, steerAxis: 0, command: null }
-          : input.read()
-
-        if (state.mode === 'menu' && (controls.accelerate || controls.left || controls.right || controls.brake)) {
-          startRun(state)
-        } else if (state.mode === 'ended' && controls.accelerate && !prevControls.accelerate) {
-          startRun(state)
-        }
-        prevControls = { ...controls }
-
-        updateState(state, controls, FIXED_STEP)
-        accumulator -= FIXED_STEP
-      }
-
-      const alpha = accumulator / FIXED_STEP
-
-      // [v7.7] Interpolation Logic
-      // Create a temporary render state object with interpolated values
-      // Note: We don't modify the actual state, just pass a view object
-      const renderState = { ...state }
-
-      if (state.mode === 'running' || state.mode === 'ended') {
-        renderState.playerX = lerp(state.prevPlayerX, state.playerX, alpha)
-        renderState.lateralVel = lerp(state.prevLateralVel, state.lateralVel, alpha)
-        renderState.steeringValue = lerp(state.prevSteeringValue, state.steeringValue, alpha)
-        renderState.carYaw = lerp(state.prevCarYaw, state.carYaw, alpha)
-        renderState.carRoll = lerp(state.prevCarRoll, state.carRoll, alpha)
-        renderState.pitch = lerp(state.prevPitch, state.pitch, alpha)
-        renderState.distance = lerp(state.prevDistance, state.distance, alpha)
-        renderState.trackX = lerp(state.prevTrackX || 0, state.trackX, alpha)
-        renderState.worldX = lerp(state.prevWorldX, state.worldX, alpha)
-        renderState.worldZ = lerp(state.prevWorldZ, state.worldZ, alpha)
-        renderState.worldYaw = lerpAngle(state.prevWorldYaw, state.worldYaw, alpha)
-        renderState.renderTrackX = renderState.trackX
-        renderState.renderPlayerX = renderState.playerX
-        renderState.renderSteeringValue = renderState.steeringValue
-        renderState.renderCarYaw = renderState.carYaw
-        renderState.renderCarRoll = renderState.carRoll
-        renderState.renderPitch = renderState.pitch
-        renderState.renderDistance = renderState.distance
-        renderState.renderWorldX = renderState.worldX
-        renderState.renderWorldZ = renderState.worldZ
-        renderState.renderWorldYaw = renderState.worldYaw
-      }
-
-      const roadSamples = buildRoadSamples(renderState.distance, renderState)
-      const props = buildProps(roadSamples, renderState)
-      const stopMarker = buildStopMarker(renderState)
-
-      renderState.roadSamples = roadSamples
-      renderState.props = props
-      renderState.stopMarker = stopMarker
-      state.roadSamples = roadSamples
-      state.props = props
-      state.stopMarker = stopMarker
-
-      resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
-      renderer.draw(renderState, now / 1000)
-      syncHud()
+      const controls = helpOpen
+        ? { accelerate: false, brake: false, reverse: false, left: false, right: false, steerAxis: 0, command: null }
+        : input.read()
+      updateAndRender(dt, now / 1000, controls)
 
     } catch (error) {
       hud.reportError(error)
-      stop()
-      return
+      // Keep controls/listeners alive so a transient render error does not
+      // permanently block start/restart input.
     }
 
     rafId = requestAnimationFrame(frame)
@@ -285,7 +230,18 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     window.removeEventListener('error', onWindowError)
     window.removeEventListener('unhandledrejection', onUnhandledRejection)
     window.removeEventListener('keydown', onKeyDown)
-    if (startButton) startButton.removeEventListener('click', onStartClick)
+    if (startButton) {
+      startButton.removeEventListener('click', onStartClick)
+      startButton.removeEventListener('pointerdown', onStartPointer)
+      startButton.removeEventListener('mousedown', onStartPointer)
+      startButton.removeEventListener('touchstart', onStartPointer)
+    }
+    if (startOverlay) {
+      startOverlay.removeEventListener('click', onStartOverlayClick)
+      startOverlay.removeEventListener('pointerdown', onStartPointer)
+      startOverlay.removeEventListener('mousedown', onStartPointer)
+      startOverlay.removeEventListener('touchstart', onStartPointer)
+    }
     if (restartButton) restartButton.removeEventListener('click', onRestartClick)
     delete window.render_game_to_text
     delete window.advanceTime
@@ -298,7 +254,18 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   window.addEventListener('error', onWindowError)
   window.addEventListener('unhandledrejection', onUnhandledRejection)
   window.addEventListener('keydown', onKeyDown)
-  if (startButton) startButton.addEventListener('click', onStartClick)
+  if (startButton) {
+    startButton.addEventListener('click', onStartClick)
+    startButton.addEventListener('pointerdown', onStartPointer)
+    startButton.addEventListener('mousedown', onStartPointer)
+    startButton.addEventListener('touchstart', onStartPointer)
+  }
+  if (startOverlay) {
+    startOverlay.addEventListener('click', onStartOverlayClick)
+    startOverlay.addEventListener('pointerdown', onStartPointer)
+    startOverlay.addEventListener('mousedown', onStartPointer)
+    startOverlay.addEventListener('touchstart', onStartPointer)
+  }
   if (restartButton) restartButton.addEventListener('click', onRestartClick)
 
   window.render_game_to_text = () => renderGameToText(state)
@@ -306,7 +273,10 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     const steps = Math.max(1, Math.round(ms / (1000 / 60)))
     const dt = ms / 1000 / steps
     for (let i = 0; i < steps; i += 1) {
-      updateAndRender(dt, performance.now() / 1000)
+      const controls = helpOpen
+        ? { accelerate: false, brake: false, reverse: false, left: false, right: false, steerAxis: 0, command: null }
+        : input.read()
+      updateAndRender(dt, performance.now() / 1000, controls)
     }
   }
 

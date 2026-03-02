@@ -81,7 +81,7 @@ export function createHud(rootElement) {
 
   function setDoorState(doorOpen) {
     if (!doorElement) return
-    doorElement.textContent = doorOpen ? '열림' : '닫힘'
+    doorElement.textContent = doorOpen ? 'OPEN' : 'CLOSED'
     doorElement.classList.toggle('door-open', doorOpen)
     doorElement.classList.toggle('door-closed', !doorOpen)
   }

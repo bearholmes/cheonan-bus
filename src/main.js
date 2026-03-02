@@ -58,11 +58,11 @@ app.innerHTML = `
         <div class="hud-label">남은시간</div>
         <div class="hud-timer" data-role="timer">045 s</div>
       </div>
-      <div class="hud-box">
-        <div class="hud-label">도어</div>
-        <div class="hud-door" data-role="door">닫힘</div>
+      <div class="hud-box hud-box-door">
+        <div class="hud-label">DOOR</div>
+        <div class="hud-door" data-role="door">CLOSED</div>
       </div>
-      <div class="hud-box">
+      <div class="hud-box hud-box-speed">
         <div class="hud-label hidden">SPEED</div>
         <div class="hud-speed-row">
           <span class="hud-speed-value" data-role="speed">000</span>

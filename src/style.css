@@ -37,8 +37,8 @@ body,
   left: 0;
   right: auto;
   pointer-events: none;
-  padding: 12px;
-  width: min(320px, calc(100vw - 24px));
+  padding: 10px;
+  width: min(320px, calc(100vw - 20px));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -47,15 +47,16 @@ body,
 
 .hud-main {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   justify-content: space-between;
+  align-items: center;
   width: 100%;
-  padding: 6px 10px;
+  padding: 6px 8px;
   box-sizing: border-box;
-  border-radius: 10px;
-  border: 1px solid rgba(145, 190, 214, 0.28);
-  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  border-radius: 8px;
+  border: 1px solid rgba(180, 210, 230, 0.25);
+  background: rgba(8, 18, 28, 0.78);
+  box-shadow: none;
 }
 
 .hud-box {
@@ -70,44 +71,72 @@ body,
   flex: 1;
 }
 
-.hud-main .hud-box:nth-child(2) {
+.hud-main .hud-box-speed {
   min-width: 0;
   width: 0;
   flex: 0 0 0;
 }
 
+.hud-main .hud-box-door {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 84px;
+}
+
 .hud-label {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: #9bb9cb;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  color: #9cb5c4;
   text-shadow: none;
-  text-transform: uppercase;
 }
 
 .hud-door {
   margin-top: 2px;
-  font-size: 28px;
+  min-width: 76px;
+  padding: 4px 8px;
+  border: 1px solid rgba(180, 204, 220, 0.36);
+  background: rgba(5, 14, 22, 0.6);
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
   line-height: 1;
   font-weight: 700;
-  color: #ff6f6f;
-  text-shadow: 2px 2px 0 #000;
+  text-shadow: none;
+  box-sizing: border-box;
+}
+
+.hud-door::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.95;
 }
 
 .hud-door.door-open {
-  color: #8bff8b;
+  color: #8ef0b4;
+  border-color: rgba(142, 240, 180, 0.48);
 }
 
 .hud-door.door-closed {
-  color: #ff8f91;
+  color: #f2a0a6;
+  border-color: rgba(242, 160, 166, 0.45);
 }
 
 .hud-timer {
   margin-top: 2px;
-  font-size: 34px;
+  font-size: 28px;
   line-height: 1;
   font-weight: 800;
-  color: #fff26f;
-  text-shadow: 0 0 10px rgba(255, 242, 111, 0.18);
+  color: #f0e36a;
+  text-shadow: none;
 }
 
 .hud-speed-row {
@@ -162,24 +191,25 @@ body,
 .hud-stamp {
   margin-top: 0;
   width: 100%;
-  padding: 6px 10px;
+  padding: 6px 8px;
   box-sizing: border-box;
-  border-radius: 10px;
-  border: 1px solid rgba(145, 190, 214, 0.28);
-  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
-  font-size: 12px;
-  font-weight: 600;
-  color: #c2e8ff;
+  border-radius: 8px;
+  border: 1px solid rgba(180, 210, 230, 0.25);
+  background: rgba(8, 18, 28, 0.78);
+  font-size: 11px;
+  font-weight: 700;
+  color: #cce0ec;
   text-shadow: none;
+  white-space: nowrap;
 }
 
 .hud-nav-row {
   width: 100%;
-  padding: 6px 10px;
+  padding: 6px 8px;
   box-sizing: border-box;
-  border-radius: 10px;
-  border: 1px solid rgba(145, 190, 214, 0.28);
-  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
+  border-radius: 8px;
+  border: 1px solid rgba(180, 210, 230, 0.25);
+  background: rgba(8, 18, 28, 0.78);
 }
 
 .hud-nav-row {
@@ -193,10 +223,10 @@ body,
 }
 
 .hud-nav {
-  font-size: 22px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1.1;
-  color: #eef8ff;
+  color: #e0eef7;
   text-shadow: none;
 }
 
@@ -228,7 +258,8 @@ body,
 .hud-toast {
   position: fixed;
   left: 50%;
-  bottom: 94px;
+  top: 120px;
+  bottom: auto;
   transform: translateX(-50%);
   min-width: 320px;
   max-width: min(720px, calc(100vw - 28px));
@@ -502,6 +533,17 @@ body,
     font-size: 11px;
   }
 
+  .hud-label {
+    font-size: 12px;
+  }
+
+  .hud-door {
+    margin-top: 5px;
+    min-width: 58px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
   .overlay-card-start {
     padding: 24px 18px;
   }
@@ -514,7 +556,7 @@ body,
   .hud-toast {
     min-width: 0;
     width: calc(100vw - 20px);
-    bottom: 90px;
+    top: 96px;
     font-size: 14px;
   }
 }
