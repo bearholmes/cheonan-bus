@@ -14,18 +14,25 @@ const STOP_ZONE_HALF_LENGTH = 2.8
 const STOP_ZONE_OFFSET = 5
 const STOP_FLOW_INTERVAL = 0.55
 const STOP_CLEAR_TIME_BONUS = 7
-const MAX_MISSION_TIME = 140
+const MAX_MISSION_TIME = 150
 const MISS_TIME_PENALTY = 9
-const PERFECT_STOP_RADIUS = 1.8
-const GOOD_STOP_RADIUS = 3.6
+const PERFECT_STOP_RADIUS = 1.5
+const GOOD_STOP_RADIUS = 3.5
 const STOP_MISS_DISTANCE = 150
 const MAX_MISSED_STOPS = 3
 const STOP_GAP_BASE = 400
 const STOP_GAP_VARIATION = 200
 const TARGET_PASSENGERS = 24
-const INITIAL_MISSION_TIME = 90
-const STAGE_STOP_TARGET = 3
+const INITIAL_ONBOARD_PASSENGERS = 8
+const INITIAL_MISSION_TIME = 120
 const STRAIGHT_START_DISTANCE = 70
+const STOP_TARGET = 8
+const SAFETY_START = 100
+const SAFETY_PENALTY_PER_POINT = 14
+const SAFE_SPEED_LIMIT = 68
+const HARD_BRAKE_THRESHOLD = 55
+const SHARP_STEER_THRESHOLD = 0.75
+const IMPACT_SCORE_PENALTY = 220
 
 const SEGMENT_LENGTH = 2.6
 const VISIBLE_SEGMENTS = 132
@@ -36,6 +43,8 @@ const DEFAULT_CURVE_ZONES = [
   { start: 0, end: STRAIGHT_START_DISTANCE, curve: 0.0 },
   { start: STRAIGHT_START_DISTANCE, end: 2500, curve: 0.0 }
 ]
+
+const STAGE_STOP_TARGET = STOP_TARGET
 
 let ACTIVE_CURVE_ZONES = DEFAULT_CURVE_ZONES
 
@@ -75,6 +84,29 @@ function pushToast(state, text, kind = 'info') {
   state.toastKind = kind
 }
 
+function applySafetyDelta(state, delta, scorePenalty = 0) {
+  if (delta <= 0) return
+  state.safety = Math.max(0, state.safety - delta)
+  if (scorePenalty > 0) {
+    state.score = Math.max(0, state.score - scorePenalty)
+    state.safetyPenaltyTotal += scorePenalty
+  }
+}
+
+function calcGrade(state) {
+  const served = Number.isFinite(state.stopsServed) ? state.stopsServed : 0
+  const missed = Number.isFinite(state.missedStops) ? state.missedStops : 0
+  const attempted = served + missed
+  const successRate = attempted > 0 ? served / attempted : 0
+  const safety = Number.isFinite(state.safety) ? state.safety : 0
+  const score = Number.isFinite(state.score) ? state.score : 0
+
+  if (served >= STAGE_STOP_TARGET && successRate >= 0.9 && safety >= 85 && score >= 2200) return 'S'
+  if (successRate >= 0.75 && safety >= 70 && score >= 1500) return 'A'
+  if (successRate >= 0.5 && safety >= 50) return 'B'
+  return 'C'
+}
+
 function boardOnePassenger(state) {
   if (state.passengers >= TARGET_PASSENGERS) return false
   const idx = state.seats.findIndex((taken) => !taken)
@@ -91,6 +123,15 @@ function dropOnePassenger(state) {
   state.seats[idx] = false
   state.passengers = Math.max(0, state.passengers - 1)
   return true
+}
+
+function setInitialPassengers(state) {
+  const onboard = clamp(INITIAL_ONBOARD_PASSENGERS, 0, TARGET_PASSENGERS)
+  state.passengers = onboard
+  state.seats.fill(false)
+  for (let i = 0; i < onboard; i += 1) {
+    state.seats[i] = true
+  }
 }
 
 function resetStopDemand(state) {
@@ -112,17 +153,11 @@ function ensureStopDemand(state) {
   if (state.stopDemandStopIndex === state.stopIndex) return
 
   const seed = (state.activeRouteSeed || state.routeSeed || 1) + state.stopIndex * 37
-  const maxDrop = Math.min(state.passengers, 4)
-  const dropCount = maxDrop > 0 ? 1 + Math.floor(hash01(seed + 1) * maxDrop) : 0
-  const waitBase = 2 + Math.floor(hash01(seed + 2) * 6)
-  const rushBonus = hash01(seed + 3) > 0.86 ? 3 : 0
-  let boardCount = waitBase + rushBonus
+  const requestedDrop = 1 + Math.floor(hash01(seed + 1) * 4)
+  const requestedBoard = 2 + Math.floor(hash01(seed + 2) * 7)
+  const dropCount = Math.min(state.passengers, requestedDrop)
   const availableCapacity = TARGET_PASSENGERS - state.passengers + dropCount
-  boardCount = Math.min(boardCount, Math.max(0, availableCapacity))
-
-  if (dropCount + boardCount < 2) {
-    boardCount = Math.min(Math.max(0, availableCapacity), 2)
-  }
+  const boardCount = Math.min(requestedBoard, Math.max(0, availableCapacity))
 
   state.stopDemandStopIndex = state.stopIndex
   state.stopDropPending = dropCount
@@ -166,44 +201,51 @@ function completeCurrentStop(state, toastText) {
   const movedDrop = state.stopDropInitial - state.stopDropPending
   const movedBoard = state.stopBoardInitial - state.stopBoardPending
   const movedTotal = Math.max(0, movedDrop + movedBoard)
-  const precision = Number.isFinite(state.stopRadialDistance) ? state.stopRadialDistance : 99
-  let dockBonus = 40
-  let extraTime = 0
+  const precision = Number.isFinite(state.stopBestPrecision) ? state.stopBestPrecision : (Number.isFinite(state.stopRadialDistance) ? state.stopRadialDistance : 99)
+  let quality = 'bad'
+  let precisionBonus = 0
+  let timeBonus = 0
 
   if (precision <= PERFECT_STOP_RADIUS) {
-    dockBonus = 140
-    extraTime = 3
+    quality = 'perfect'
+    precisionBonus = 260
+    timeBonus = 4
   } else if (precision <= GOOD_STOP_RADIUS) {
-    dockBonus = 80
-    extraTime = 1
+    quality = 'good'
+    precisionBonus = 80
   }
 
-  const comboBonus = state.stopCombo * 25
-  const flowBonus = movedTotal * 18
-  const gainedScore = 120 + dockBonus + comboBonus + flowBonus
+  const comboMultiplier = 1 + state.stopCombo * 0.18
+  const baseScore = 180 + movedTotal * 24 + precisionBonus
+  const gainedScore = Math.max(0, Math.round(baseScore * comboMultiplier))
   state.score += gainedScore
   state.lastStopScore = gainedScore
+  state.lastStopQuality = quality
   state.stopCombo += 1
   state.bestStopCombo = Math.max(state.bestStopCombo, state.stopCombo)
 
   state.stopsServed += 1
   state.stageStopsDone = Math.min(state.stageStopsTarget, state.stageStopsDone + 1)
-  state.missionTime = Math.min(MAX_MISSION_TIME, state.missionTime + STOP_CLEAR_TIME_BONUS + extraTime)
+  state.missionTime = Math.min(MAX_MISSION_TIME, state.missionTime + STOP_CLEAR_TIME_BONUS + timeBonus)
+  state.stopBestPrecision = Infinity
 
   if (state.stageStopsDone >= state.stageStopsTarget) {
     resetStopDemand(state)
     state.mode = 'ended'
     state.result = 'success'
+    state.grade = calcGrade(state)
     state.hudLine = '운행 성공! 목표 정차를 모두 완료했습니다.'
     pushToast(state, '운행 목표 달성!', 'good')
     return true
   }
 
   advanceStop(state)
+
   if (toastText) {
-    pushToast(state, toastText, 'good')
+    const qualityText = quality === 'perfect' ? 'Perfect' : quality === 'good' ? 'Good' : 'Bad'
+    pushToast(state, `${qualityText} 정차 · ${toastText} · +${gainedScore}점`, quality === 'bad' ? 'info' : 'good')
   }
-  state.hudLine = '정차 완료. Space로 문을 닫고 출발하세요'
+  state.hudLine = `정차 완료 +${gainedScore}점 · 문 닫고 출발`
   return false
 }
 
@@ -601,8 +643,14 @@ export function createInitialState() {
     stopCombo: 0,
     bestStopCombo: 0,
     lastStopScore: 0,
+    lastStopQuality: 'good',
+    safety: SAFETY_START,
+    safetyPenaltyTotal: 0,
+    stopBestPrecision: Infinity,
+    impactCount: 0,
+    impactCooldown: 0,
 
-    passengers: 0,
+    passengers: INITIAL_ONBOARD_PASSENGERS,
     targetPassengers: TARGET_PASSENGERS,
     seats: new Array(TARGET_PASSENGERS).fill(false),
 
@@ -630,12 +678,14 @@ export function createInitialState() {
     toastMessage: '',
     toastSeq: 0,
     missionTime: INITIAL_MISSION_TIME,
-    result: null
+    result: null,
+    grade: 'C'
   }
 
   state.roadSamples = buildRoadSamples(0, state)
   state.props = buildProps(state.roadSamples, state)
   state.stopMarker = buildStopMarker(state)
+  setInitialPassengers(state)
 
   return state
 }
@@ -655,8 +705,7 @@ export function startRun(state) {
   state.nextStopDistance = STOP_GAP_BASE
   state.stopIndex = 0
   state.missedStops = 0
-  state.passengers = 0
-  state.seats.fill(false)
+  setInitialPassengers(state)
   state.doorOpen = false
   state.steeringValue = 0
   state.carYaw = 0
@@ -698,10 +747,17 @@ export function startRun(state) {
   state.stopCombo = 0
   state.bestStopCombo = 0
   state.lastStopScore = 0
+  state.lastStopQuality = 'good'
+  state.safety = SAFETY_START
+  state.safetyPenaltyTotal = 0
+  state.stopBestPrecision = Infinity
+  state.impactCount = 0
+  state.impactCooldown = 0
   state.result = null
+  state.grade = 'C'
   resetStopDemand(state)
 
-  state.hudLine = '목표: 90초 내 정류장 3회 정차 (박스+15m에서 Space)'
+  state.hudLine = `목표: ${INITIAL_MISSION_TIME}초 내 정류장 ${STAGE_STOP_TARGET}개 처리`
   pushToast(state, '운행 시작', 'info')
 
   state.roadSamples = buildRoadSamples(0, state)
@@ -735,8 +791,10 @@ export function updateState(state, input, dt) {
       state.missionTime = 0
       state.mode = 'ended'
       state.result = 'timeout'
+      state.grade = calcGrade(state)
       return
     }
+    state.impactCooldown = Math.max(0, (state.impactCooldown || 0) - step)
   }
 
   state.doorAnim += ((state.doorOpen ? 1 : 0) - state.doorAnim) * step * 5
@@ -792,6 +850,7 @@ export function updateState(state, input, dt) {
       state.doorOpen = !state.doorOpen
       state.stopHoldTime = 0
       state.stopFlowTimer = 0
+      state.stopBestPrecision = Infinity
       state.hudLine = state.doorOpen
         ? '도어 개방: 정류장 박스+15m에서만 승하차 가능'
         : 'W: 가속 | S: 브레이크 | R: 후진'
@@ -852,6 +911,35 @@ export function updateState(state, input, dt) {
   state.pitch = -deltaSpeed * 0.05
   state.prevSpeed = state.speed
 
+  if (!isMenu) {
+    const accelRate = Math.abs(deltaSpeed) / Math.max(step, 0.0001)
+    let safetyLoss = 0
+
+    if (speedAbs > SAFE_SPEED_LIMIT) {
+      safetyLoss += step * (speedAbs - SAFE_SPEED_LIMIT) * 0.08
+    }
+    if (brake && speedAbs > 12 && accelRate > HARD_BRAKE_THRESHOLD) {
+      safetyLoss += step * 7.5
+    }
+    if (speedAbs > 22 && Math.abs(state.steeringValue) > SHARP_STEER_THRESHOLD) {
+      safetyLoss += step * 5.5
+    }
+    if (safetyLoss > 0) {
+      applySafetyDelta(state, safetyLoss, Math.round(safetyLoss * SAFETY_PENALTY_PER_POINT))
+    }
+
+    const severeBrakeImpact = brake && speedAbs > 25 && accelRate > HARD_BRAKE_THRESHOLD * 1.25
+    const roadEdgeImpact = Math.abs(state.playerX) > ROAD_HALF_WIDTH * 1.55 && speedAbs > 28
+    if ((severeBrakeImpact || roadEdgeImpact) && state.impactCooldown <= 0) {
+      state.impactCooldown = 1.1
+      state.impactCount += 1
+      state.stopCombo = 0
+      state.score = Math.max(0, state.score - IMPACT_SCORE_PENALTY)
+      state.safetyPenaltyTotal += IMPACT_SCORE_PENALTY
+      pushToast(state, '충격! 콤보 리셋 · 점수 페널티', 'bad')
+    }
+  }
+
   const distToStop = state.nextStopDistance - state.distance
   const stopInteraction = computeStopInteraction(state)
   state.stopInsideBox = stopInteraction.insideBox
@@ -867,11 +955,18 @@ export function updateState(state, input, dt) {
       if (stopInteraction.canService) {
         ensureStopDemand(state)
         state.stopHoldTime += step
+        state.stopBestPrecision = Math.min(state.stopBestPrecision, stopInteraction.radialDistance)
 
         state.stopFlowTimer += step
+        let flowInterval = STOP_FLOW_INTERVAL
+        if (state.stopBestPrecision <= PERFECT_STOP_RADIUS) {
+          flowInterval = STOP_FLOW_INTERVAL * 0.55
+        } else if (state.stopBestPrecision > GOOD_STOP_RADIUS) {
+          flowInterval = STOP_FLOW_INTERVAL * 1.35
+        }
 
-        while (state.stopFlowTimer >= STOP_FLOW_INTERVAL) {
-          state.stopFlowTimer -= STOP_FLOW_INTERVAL
+        while (state.stopFlowTimer >= flowInterval) {
+          state.stopFlowTimer -= flowInterval
 
           if (state.stopDropPending > 0) {
             const dropped = dropOnePassenger(state)
@@ -894,11 +989,14 @@ export function updateState(state, input, dt) {
           state.hudLine = `승하차 진행 하차 ${droppedNow}/${state.stopDropInitial} | 탑승 ${boardedNow}/${state.stopBoardInitial}`
         } else {
           stopHandledThisStep = true
-          if (completeCurrentStop(state, `정차 완료 (+${STOP_CLEAR_TIME_BONUS}초)`)) return
+          const totalDemand = state.stopDropInitial + state.stopBoardInitial
+          const stopMessage = totalDemand > 0 ? '정차 완료' : '승하차 없음 정차 확인'
+          if (completeCurrentStop(state, stopMessage)) return
         }
       } else {
         state.stopHoldTime = 0
         state.stopFlowTimer = 0
+        state.stopBestPrecision = Infinity
         state.hudLine = stopInteraction.withinRadius
           ? '정류장 박스 안에 정확히 정차해야 승하차됩니다'
           : '승하차 불가: 정류장 박스 + 15m 이내에서만 가능'
@@ -906,6 +1004,7 @@ export function updateState(state, input, dt) {
     } else {
       state.stopHoldTime = 0
       state.stopFlowTimer = 0
+      state.stopBestPrecision = Infinity
       if (!state.doorOpen && stopInteraction.canService && speedAbs < 0.1) {
         state.hudLine = '정류장 도착: Space로 문 열기'
       } else if (!state.doorOpen && stopInteraction.withinRadius && !stopInteraction.insideBox && speedAbs < 2.5) {
@@ -923,6 +1022,7 @@ export function updateState(state, input, dt) {
       if (state.missionTime <= 0) {
         state.mode = 'ended'
         state.result = 'timeout'
+        state.grade = calcGrade(state)
         state.hudLine = '시간 소진으로 운행 실패'
         return
       }
@@ -930,6 +1030,7 @@ export function updateState(state, input, dt) {
       if (state.missedStops >= MAX_MISSED_STOPS) {
         state.mode = 'ended'
         state.result = 'missed-stops'
+        state.grade = calcGrade(state)
         state.hudLine = '미정차 누적 한도 초과로 운행 실패'
       }
     }
@@ -943,11 +1044,14 @@ export function renderGameToText(state) {
     passengers: state.passengers,
     door: state.doorOpen ? 'OPEN' : 'CLOSED',
     nextStop: `${(state.nextStopDistance - state.distance).toFixed(0)}m`,
-    stage: `${state.stageStopsDone}/${state.stageStopsTarget}`,
+    stops: `${state.stageStopsDone}/${state.stageStopsTarget}`,
     missedStops: state.missedStops,
     score: state.score,
     combo: state.stopCombo,
     bestCombo: state.bestStopCombo,
+    safety: Number.isFinite(state.safety) ? state.safety.toFixed(1) : '0.0',
+    impacts: state.impactCount,
+    grade: state.grade,
     stopCanService: state.stopCanService,
     stopInsideBox: state.stopInsideBox,
     stopRadius: Number.isFinite(state.stopRadialDistance) ? state.stopRadialDistance.toFixed(2) : 'INF',

@@ -24,8 +24,6 @@ export function createHud(rootElement) {
   const stampElement = rootElement.querySelector('[data-role="stamp"]')
   const speedElement = rootElement.querySelector('[data-role="speed"]')
   const speedFillElement = rootElement.querySelector('[data-role="speed-fill"]')
-  const stopDistanceElement = rootElement.querySelector('[data-role="stop-distance"]')
-  const stopFillElement = rootElement.querySelector('[data-role="stop-fill"]')
   const toastElement = rootElement.querySelector('[data-role="toast"]')
   const errorsElement = rootElement.querySelector('[data-role="errors"]')
   const errors = []
@@ -33,14 +31,11 @@ export function createHud(rootElement) {
 
   if (
     !timerElement ||
-    !turnElement ||
     !navElement ||
     !messageElement ||
     !stampElement ||
     !speedElement ||
     !speedFillElement ||
-    !stopDistanceElement ||
-    !stopFillElement ||
     !toastElement ||
     !errorsElement
   ) {
@@ -65,12 +60,6 @@ export function createHud(rootElement) {
     const distance = Math.round(Math.max(0, stopDistance))
     if (turnElement) turnElement.textContent = icon
     if (navElement) navElement.textContent = `정류장까지 ${distance}m`
-    if (stopDistanceElement) stopDistanceElement.textContent = `${distance.toString().padStart(3, '0')}m`
-    const stopPct = clamp(1 - distance / 260, 0, 1)
-    if (stopFillElement) {
-      stopFillElement.style.width = `${Math.round(stopPct * 100)}%`
-      stopFillElement.classList.toggle('stop-close', distance <= 40)
-    }
     if (navElement) {
       navElement.classList.toggle('nav-approach', urgency === 'approach')
       navElement.classList.toggle('nav-alert', urgency === 'alert')
@@ -88,9 +77,6 @@ export function createHud(rootElement) {
     const speedPct = clamp(speedAbs / speedCap, 0, 1)
     speedFillElement.style.width = `${Math.round(speedPct * 100)}%`
     speedFillElement.classList.toggle('speed-high', speedPct >= 0.82)
-    if (stopFillElement) {
-      stopFillElement.classList.toggle('stop-hold', stopHold > 0.01)
-    }
   }
 
   function setMessage(line) {
@@ -130,87 +116,10 @@ export function createHud(rootElement) {
 
   syncErrors()
 
-  function setSeats(seats) {
-    let seatingElement = rootElement.querySelector('[data-role="seating"]')
-
-    if (!seatingElement) {
-      seatingElement = document.createElement('div')
-      seatingElement.className = 'hud-seating'
-      seatingElement.dataset.role = 'seating'
-      const msgParams = rootElement.querySelector('[data-role="message"]')
-      if (msgParams) rootElement.insertBefore(seatingElement, msgParams)
-      else rootElement.appendChild(seatingElement)
-    }
-
-    if (seatingElement.dataset.ui !== 'compact') {
-      seatingElement.innerHTML = ''
-      seatingElement.dataset.ui = 'compact'
-
-      const head = document.createElement('div')
-      head.className = 'seating-head'
-      const title = document.createElement('span')
-      title.className = 'seating-title'
-      title.textContent = '좌석'
-      const count = document.createElement('span')
-      count.className = 'seating-count'
-      count.dataset.role = 'seat-count'
-      head.append(title, count)
-
-      const meter = document.createElement('div')
-      meter.className = 'seating-meter'
-      const meterFill = document.createElement('div')
-      meterFill.className = 'seating-fill'
-      meterFill.dataset.role = 'seat-fill'
-      meter.appendChild(meterFill)
-
-      const meta = document.createElement('div')
-      meta.className = 'seating-meta'
-      const left = document.createElement('span')
-      left.className = 'seating-left'
-      left.dataset.role = 'seat-left'
-      const load = document.createElement('span')
-      load.className = 'seating-load'
-      load.dataset.role = 'seat-load'
-      meta.append(left, load)
-
-      const strip = document.createElement('div')
-      strip.className = 'seating-strip'
-      for (let i = 0; i < seats.length; i += 1) {
-        const seat = document.createElement('div')
-        seat.className = 'seat-dot'
-        seat.dataset.index = String(i)
-        strip.appendChild(seat)
-      }
-
-      seatingElement.append(head, meter, meta, strip)
-    }
-
-    const seatNodes = seatingElement.querySelectorAll('.seat-dot')
-    const occupied = seats.reduce((acc, seated) => acc + (seated ? 1 : 0), 0)
-    const total = Math.max(1, seats.length)
-    const fillPct = clamp(occupied / total, 0, 1)
-    const countNode = seatingElement.querySelector('[data-role="seat-count"]')
-    const fillNode = seatingElement.querySelector('[data-role="seat-fill"]')
-    const leftNode = seatingElement.querySelector('[data-role="seat-left"]')
-    const loadNode = seatingElement.querySelector('[data-role="seat-load"]')
-
-    if (countNode) countNode.textContent = `${occupied}/${total}`
-    if (fillNode) fillNode.style.width = `${Math.round(fillPct * 100)}%`
-    if (leftNode) leftNode.textContent = `빈좌석 ${Math.max(0, total - occupied)}석`
-    if (loadNode) loadNode.textContent = `탑승률 ${Math.round(fillPct * 100)}%`
-
-    seats.forEach((isOccupied, i) => {
-      if (seatNodes[i]) {
-        seatNodes[i].classList.toggle('occupied', isOccupied === true)
-      }
-    })
-  }
-
   return {
     setTimer,
     setNav,
     setTelemetry,
-    setSeats,
     setMessage,
     setStamp,
     showToast,
