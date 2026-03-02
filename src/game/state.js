@@ -85,6 +85,10 @@ function pushToast(state, text, kind = 'info') {
   state.toastKind = kind
 }
 
+export function pushAudioEvent(state, name, args = {}) {
+  state.audioEvents.push({ name, args })
+}
+
 function applySafetyDelta(state, delta, scorePenalty = 0) {
   if (delta <= 0) return
   state.safety = Math.max(0, state.safety - delta)
@@ -114,6 +118,7 @@ function boardOnePassenger(state) {
   if (idx < 0) return false
   state.seats[idx] = true
   state.passengers += 1
+  pushAudioEvent(state, 'board')
   return true
 }
 
@@ -123,6 +128,7 @@ function dropOnePassenger(state) {
   if (idx < 0) return false
   state.seats[idx] = false
   state.passengers = Math.max(0, state.passengers - 1)
+  pushAudioEvent(state, 'drop')
   return true
 }
 
@@ -248,6 +254,7 @@ function completeCurrentStop(state, toastText) {
     state.grade = calcGrade(state)
     state.hudLine = '운행 성공! 목표 정차를 모두 완료했습니다.'
     pushToast(state, '운행 목표 달성!', 'good')
+    pushAudioEvent(state, 'score', { quality: 'perfect' })
     return true
   }
 
@@ -256,6 +263,7 @@ function completeCurrentStop(state, toastText) {
   if (toastText) {
     const qualityText = quality === 'perfect' ? 'Perfect' : quality === 'good' ? 'Good' : 'Bad'
     pushToast(state, `${qualityText} 정차 · ${toastText} · +${gainedScore}점`, quality === 'bad' ? 'info' : 'good')
+    pushAudioEvent(state, 'score', { quality })
   }
   state.hudLine = `정차 완료 +${gainedScore}점 · 문 닫고 출발`
   return false
@@ -690,6 +698,7 @@ export function createInitialState() {
     stamp: '대기 중',
     toastMessage: '',
     toastSeq: 0,
+    audioEvents: [],
     missionTime: INITIAL_MISSION_TIME,
     result: null,
     grade: 'C'
@@ -768,6 +777,7 @@ export function startRun(state) {
   state.impactCooldown = 0
   state.result = null
   state.grade = 'C'
+  state.audioEvents = []
   resetStopDemand(state)
 
   state.hudLine = `목표: ${INITIAL_MISSION_TIME}초 내 정류장 ${STAGE_STOP_TARGET}개 처리`
@@ -859,6 +869,7 @@ export function updateState(state, input, dt) {
     if (Math.abs(state.speed) < 0.01) {
       state.speed = 0
       state.doorOpen = !state.doorOpen
+      pushAudioEvent(state, 'door', { open: state.doorOpen })
       state.stopHoldTime = 0
       state.stopFlowTimer = 0
       state.stopBestPrecision = Infinity
@@ -950,6 +961,7 @@ export function updateState(state, input, dt) {
       state.score = Math.max(0, state.score - IMPACT_SCORE_PENALTY)
       state.safetyPenaltyTotal += IMPACT_SCORE_PENALTY
       pushToast(state, '충격! 점수 페널티', 'bad')
+      pushAudioEvent(state, 'crash')
     }
   }
 
@@ -1033,6 +1045,7 @@ export function updateState(state, input, dt) {
       state.missedStops += 1
       state.missionTime = Math.max(0, state.missionTime - MISS_TIME_PENALTY)
       pushToast(state, `정류장 놓침! (${state.missedStops}/${MAX_MISSED_STOPS})`, 'bad')
+      pushAudioEvent(state, 'miss')
 
       if (state.missionTime <= 0) {
         state.mode = 'ended'
