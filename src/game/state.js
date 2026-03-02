@@ -36,7 +36,7 @@ const IMPACT_SCORE_PENALTY = 220
 const SIMPLE_RULES = true
 
 const SEGMENT_LENGTH = 2.6
-const VISIBLE_SEGMENTS = 84
+const VISIBLE_SEGMENTS = 96
 const BACK_VISIBLE_SEGMENTS = 16
 const TRACK_RUN_DISTANCE = 30000
 
@@ -521,11 +521,12 @@ const propPool = Array.from({ length: 150 }, () => ({
 
 export function buildProps(samples, state) {
   const props = state && state.props ? state.props : []
+
   let propIdx = 0
 
   for (const s of samples) {
     if (s.i < 4) continue
-    if (s.segmentIndex % 2 !== 0) continue
+    if (s.segmentIndex % 3 !== 0) continue
 
     const dist = s.worldDistance
     let biome = 'suburb'
@@ -536,18 +537,18 @@ export function buildProps(samples, state) {
     const h2 = hash01(s.segmentIndex + 13)
 
     let type = 'tree'
-    let density = 0.3
+    let density = 0.24
 
     if (biome === 'city') {
-      density = 0.6
-      if (h2 > 0.3) type = 'tower'
+      density = 0.34
+      if (h2 > 0.74) type = 'tower'
       else type = 'tree'
     } else if (biome === 'suburb') {
-      density = 0.4
-      if (h2 > 0.8) type = 'tower'
+      density = 0.24
+      if (h2 > 0.90) type = 'tower'
       else type = 'tree'
     } else {
-      density = 0.5
+      density = 0.28
       type = 'tree'
     }
 
@@ -898,21 +899,8 @@ export function updateState(state, input, dt) {
 
   let projection = projectWorldToTrack(state, state.worldX, state.worldZ, projectionBefore.distance)
 
-  if (!isMenu) {
-    const assistBySpeed = clamp((speedAbs - 8) / 40, 0, 1)
-    const steerRelax = clamp(1 - Math.abs(state.steeringValue), 0, 1)
-    const laneAssist = assistBySpeed * steerRelax
-
-    if (laneAssist > 0) {
-      const lateralCorrection = projection.lateral * laneAssist * step * 1.6
-      state.worldX -= projection.rightX * lateralCorrection
-      state.worldZ -= projection.rightZ * lateralCorrection
-      projection = projectWorldToTrack(state, state.worldX, state.worldZ, projection.distance)
-
-      const headingError = normalizeAngle(projection.heading - state.worldYaw)
-      state.worldYaw = normalizeAngle(state.worldYaw + headingError * laneAssist * step * 2.2)
-    }
-  }
+  // Intentional lane-assist correction removed: steering should come only
+  // from player input, not auto-centering.
 
   const maxOffRoad = ROAD_HALF_WIDTH * 1.3
   const clampedOffset = clamp(projection.lateral, -maxOffRoad, maxOffRoad)

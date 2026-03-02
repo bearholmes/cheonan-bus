@@ -45,7 +45,7 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   let lastTime = performance.now()
   let rafId = 0
   let propBuildAccumulator = 0
-  const PROP_BUILD_INTERVAL = 1 / 30
+  const PROP_BUILD_INTERVAL = 0
   const helpStopsElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-stops"]') : null
   const helpMissedElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-missed"]') : null
   const helpScoreElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-score"]') : null
@@ -185,10 +185,8 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     updateState(state, controls, dt)
     state.roadSamples = buildRoadSamples(state.distance, state)
     propBuildAccumulator += dt
-    if (!state.props || state.props.length === 0 || propBuildAccumulator >= PROP_BUILD_INTERVAL) {
-      state.props = buildProps(state.roadSamples, state)
-      propBuildAccumulator = 0
-    }
+    state.props = buildProps(state.roadSamples, state)
+    propBuildAccumulator = 0
     state.stopMarker = buildStopMarker(state)
     renderer.draw(state, nowSeconds)
     syncHud()
