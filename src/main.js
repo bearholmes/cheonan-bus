@@ -22,15 +22,15 @@ app.innerHTML = `
   <div id="help-overlay" class="overlay hidden">
     <div class="overlay-card overlay-card-help">
       <h1>운행 도움말</h1>
-      <p>목표: 120초 안에 정류장 8개 처리</p>
-      <p>성공: 정차 8/8 완료</p>
+      <p>목표: 120초 안에 정류장 5개 처리</p>
+      <p>성공: 정차 5/5 완료</p>
       <p>실패: 시간 0초 또는 미정차 3회</p>
       <p>정차 인정: 정류장 박스 + 15m 이내 + 완전 정지 + 문 열림</p>
       <p>미정차 상태: 정류장을 지나쳐 놓치면 1회 누적</p>
       <p>점수: 정차 성공 시 획득 (Perfect > Good > Bad)</p>
       <p class="help-live">
         현재 상태:
-        <span data-role="help-stops">정차 0/8</span> ·
+        <span data-role="help-stops">정차 0/5</span> ·
         <span data-role="help-missed">미정차 0/3</span> ·
         <span data-role="help-score">점수 0</span> ·
         <span data-role="help-passengers">승객 0/24</span>
@@ -44,7 +44,7 @@ app.innerHTML = `
       <p class="end-reason" data-role="end-reason">결과 집계중...</p>
       <div class="end-metrics">
         <div class="end-metric"><span>점수</span><strong data-role="end-score">0</strong></div>
-        <div class="end-metric"><span>정차</span><strong data-role="end-stops">0/8</strong></div>
+        <div class="end-metric"><span>정차</span><strong data-role="end-stops">0/5</strong></div>
         <div class="end-metric"><span>미정차</span><strong data-role="end-missed">0/3</strong></div>
         <div class="end-metric"><span>승객</span><strong data-role="end-passengers">0/24</strong></div>
       </div>

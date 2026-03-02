@@ -91,3 +91,6 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Skill validation (2026-03-02): reran `$WEB_GAME_CLIENT` after clearing old artifacts; `shot-0.png` generated with visible scene and no fresh `errors-0.json` output.
 - Performance hard-cut (2026-03-02): disabled lane instance drawing and disabled prop generation/rendering entirely for stutter reduction (`ENABLE_LANES=false`, `ENABLE_PROPS=false` in `src/renderer/scene.js`; early empty return in `buildProps()` in `src/game/state.js`).
 - Validation (2026-03-02): build passed; `$WEB_GAME_CLIENT` run generated fresh `output/web-game/shot-0.png` with no new `errors-0.json`.
+- Stability Patch (2026-03-02): camera/culling axis stabilized to track heading in `src/renderer/scene.js` (`camHeading = trackHeading`) to reduce wobble-induced pop.
+- Visibility Patch (2026-03-02): expanded decor/prop culling ranges (`LINE/PROP_BACK_CULL=-150`, farther base/max distances, side cull widened to 260) to reduce near-horizon popping.
+- Validation (2026-03-02): build passed; `$WEB_GAME_CLIENT` run generated fresh `output/web-game/shot-0.png` with no fresh `errors-0.json` output.
