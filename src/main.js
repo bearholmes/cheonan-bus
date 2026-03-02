@@ -39,9 +39,15 @@ app.innerHTML = `
     </div>
   </div>
   <div id="end-overlay" class="overlay hidden">
-    <div class="overlay-card">
-      <h1>천안 버스 운행 리포트</h1>
-      <p id="end-summary">결과 집계중...</p>
+    <div class="overlay-card overlay-card-end">
+      <h1 data-role="end-title">운행 종료</h1>
+      <p class="end-reason" data-role="end-reason">결과 집계중...</p>
+      <div class="end-metrics">
+        <div class="end-metric"><span>점수</span><strong data-role="end-score">0</strong></div>
+        <div class="end-metric"><span>정차</span><strong data-role="end-stops">0/8</strong></div>
+        <div class="end-metric"><span>미정차</span><strong data-role="end-missed">0/3</strong></div>
+        <div class="end-metric"><span>승객</span><strong data-role="end-passengers">0/24</strong></div>
+      </div>
       <button id="restart-btn" type="button">RESTART</button>
       <p class="overlay-credits">CHEONAN ROUTE DIVISION · 2026</p>
     </div>
@@ -51,6 +57,10 @@ app.innerHTML = `
       <div class="hud-box">
         <div class="hud-label">남은시간</div>
         <div class="hud-timer" data-role="timer">045 s</div>
+      </div>
+      <div class="hud-box">
+        <div class="hud-label">도어</div>
+        <div class="hud-door" data-role="door">닫힘</div>
       </div>
       <div class="hud-box">
         <div class="hud-label hidden">SPEED</div>
@@ -78,9 +88,8 @@ const helpOverlay = document.querySelector('#help-overlay')
 const endOverlay = document.querySelector('#end-overlay')
 const startButton = document.querySelector('#start-btn')
 const restartButton = document.querySelector('#restart-btn')
-const endSummary = document.querySelector('#end-summary')
 
-if (!canvas || !hudRoot || !startOverlay || !helpOverlay || !endOverlay || !startButton || !restartButton || !endSummary) {
+if (!canvas || !hudRoot || !startOverlay || !helpOverlay || !endOverlay || !startButton || !restartButton) {
   throw new Error('Missing required game DOM nodes.')
 }
 
@@ -91,8 +100,7 @@ const stopGame = startGame({
   helpOverlay,
   endOverlay,
   startButton,
-  restartButton,
-  endSummary
+  restartButton
 })
 
 if (import.meta.hot) {

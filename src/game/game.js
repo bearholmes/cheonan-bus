@@ -25,7 +25,7 @@ function tryToggleFullscreen(canvas) {
   }
 }
 
-export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverlay, startButton, restartButton, endSummary }) {
+export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverlay, startButton, restartButton }) {
   const hud = createHud(hudRoot)
   const input = createInputController(window)
 
@@ -48,6 +48,12 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   const helpMissedElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-missed"]') : null
   const helpScoreElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-score"]') : null
   const helpPassengersElement = helpOverlay ? helpOverlay.querySelector('[data-role="help-passengers"]') : null
+  const endTitleElement = endOverlay ? endOverlay.querySelector('[data-role="end-title"]') : null
+  const endReasonElement = endOverlay ? endOverlay.querySelector('[data-role="end-reason"]') : null
+  const endScoreElement = endOverlay ? endOverlay.querySelector('[data-role="end-score"]') : null
+  const endStopsElement = endOverlay ? endOverlay.querySelector('[data-role="end-stops"]') : null
+  const endMissedElement = endOverlay ? endOverlay.querySelector('[data-role="end-missed"]') : null
+  const endPassengersElement = endOverlay ? endOverlay.querySelector('[data-role="end-passengers"]') : null
 
   const onResize = () => resizeCanvasToDisplaySize(canvas, renderer.renderer || renderer)
   const onWindowError = (event) => {
@@ -58,6 +64,10 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
   }
   const onKeyDown = (event) => {
     if (event.code === 'Escape') {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => { })
+        return
+      }
       event.preventDefault()
       helpOpen = !helpOpen
       if (helpOverlay) {
@@ -86,41 +96,6 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     startRun(state)
   }
 
-  function buildActionGuide(stopDistance) {
-    if (state.mode !== 'running') {
-      return state.hudLine
-    }
-
-    const speedAbs = Math.abs(state.speed)
-    const pendingDrop = Number.isFinite(state.stopDropPending) ? state.stopDropPending : 0
-    const pendingBoard = Number.isFinite(state.stopBoardPending) ? state.stopBoardPending : 0
-    const hasPendingFlow = pendingDrop + pendingBoard > 0
-
-    if (state.doorOpen) {
-      if (state.stopCanService) {
-        if (hasPendingFlow) {
-          return `정차 유지: 하차 ${pendingDrop}명 · 탑승 ${pendingBoard}명 남음`
-        }
-        return '정차 완료: 문 닫고 출발'
-      }
-      return '위치 오류: 문 닫고 정류장 박스 안으로 다시 정차'
-    }
-
-    if (state.stopCanService) {
-      if (speedAbs < 0.1) return '정차 후 문 열기'
-      return '지금 할 일: 완전히 멈춰서 정차'
-    }
-
-    if (state.stopWithinRadius && !state.stopInsideBox) {
-      return '지금 할 일: 정류장 박스 안쪽으로 차 위치 맞추기'
-    }
-
-    if (stopDistance > 40) {
-      return '지금 할 일: 다음 정류장으로 이동'
-    }
-    return '지금 할 일: 감속해서 정류장 진입'
-  }
-
   function syncHud() {
     if (hudRoot) {
       hudRoot.classList.toggle('hidden', state.mode === 'menu')
@@ -136,7 +111,6 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
 
     // 텍스트 네비게이션(TURN)은 시인성을 위해 생략하거나 간소화함
     hud.setNav('', stopDistance, urgency)
-    hud.setMessage(buildActionGuide(stopDistance))
     const stageDone = Number.isFinite(state.stageStopsDone) ? state.stageStopsDone : 0
     const stageTarget = Number.isFinite(state.stageStopsTarget) ? state.stageStopsTarget : 0
     const missedStops = Number.isFinite(state.missedStops) ? state.missedStops : 0
@@ -144,6 +118,7 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     const passengers = Number.isFinite(state.passengers) ? Math.max(0, state.passengers) : 0
     const capacity = Number.isFinite(state.targetPassengers) ? Math.max(1, state.targetPassengers) : 24
     hud.setStamp(`점수 ${score} · 승객 ${passengers}/${capacity} · 정차 ${stageDone}/${stageTarget} · 미정차 ${missedStops}/3`)
+    hud.setDoorState(state.doorOpen)
     if (state.toastSeq > lastToastSeq) {
       hud.showToast(state.toastMessage, state.toastKind)
       lastToastSeq = state.toastSeq
@@ -162,23 +137,23 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     if (endOverlay) {
       endOverlay.classList.toggle('hidden', state.mode !== 'ended')
     }
-    if (endSummary && state.mode === 'ended') {
-      const label =
+    if (state.mode === 'ended') {
+      const reason =
         state.result === 'success'
-          ? '성공'
+          ? '목표 달성'
           : state.result === 'timeout'
             ? '시간 초과'
             : state.result === 'missed-stops'
-              ? '미정차 누적'
+              ? '미정차 3회 누적'
               : state.result === 'offroad'
                 ? '차량 이탈'
-                : '종료'
-      const score = Number.isFinite(state.score) ? Math.max(0, Math.round(state.score)) : 0
-      const attemptedStops = stageDone + missedStops
-      const successRate = attemptedStops > 0 ? Math.round((stageDone / attemptedStops) * 100) : 0
-      const safety = Number.isFinite(state.safety) ? Math.max(0, Math.round(state.safety)) : 0
-      const grade = state.grade || 'C'
-      endSummary.textContent = `결과: ${label}\n점수 ${score} · 정차성공률 ${successRate}%\n안전도 ${safety} · 등급 ${grade}\n정차 ${stageDone}/${stageTarget} · 미정차 ${missedStops}/3 · 승객 ${passengers}/${capacity}`
+                : '운행 종료'
+      if (endTitleElement) endTitleElement.textContent = state.result === 'success' ? '운행 성공' : '운행 실패'
+      if (endReasonElement) endReasonElement.textContent = reason
+      if (endScoreElement) endScoreElement.textContent = String(score)
+      if (endStopsElement) endStopsElement.textContent = `${stageDone}/${stageTarget}`
+      if (endMissedElement) endMissedElement.textContent = `${missedStops}/3`
+      if (endPassengersElement) endPassengersElement.textContent = `${passengers}/${capacity}`
     }
   }
 

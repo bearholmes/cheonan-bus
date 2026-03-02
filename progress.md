@@ -62,3 +62,9 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 ## TODO / Next agent notes
 - If user wants stricter “UI 4개만” globally (including speedometer/toast/errors), remove those extra elements too. Current patch interprets it as “상단 인터페이스 4개”.
 - Consider rebalancing safety penalties after live play feedback (currently conservative at low speed, punitive at high speed).
+- UI/UX Patch: removed top-left raw white warning text behavior by styling `hud-toast` as bottom-center in-game banner and mapping `alert` toast variant explicitly.
+- UX Patch: removed start-run toast spam (`운행 시작`) to avoid noisy warning overlays.
+- Rule Simplification Patch: refactored overlays/help/end panel for clearer mission state and reduced rule surface in visible UI.
+- Stop Logic Investigation: reproduced failure cases where bus appeared aligned but `stopCanService` stayed false; observed mismatch between rendered marker position and logic coordinates in some runs.
+- Stop Logic Patch: stop interaction now prefers `state.stopMarker` (rendered marker) world coordinates for box/radius checks to align on-screen line and gameplay 판정.
+- Steering/Path Stability Patch: added light lane/heading assist when no steering input to reduce curve drift accumulation that made stop approach inconsistent.
