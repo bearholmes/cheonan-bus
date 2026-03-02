@@ -2,6 +2,7 @@ import { createSceneRenderer } from '../renderer/scene.js'
 import { createHud } from './hud.js'
 import { createInputController } from './input.js'
 import { createInitialState, renderGameToText, startRun, updateState, buildRoadSamples, buildProps, buildStopMarker } from './state.js'
+import * as audio from '../audio.js'
 
 function resizeCanvasToDisplaySize(canvas, renderer) {
   const dpr = 1.0 // Window.devicePixelRatio를 쓸 수도 있으나, 고질적인 성능 문제를 위해 1.0 고정 (혹은 옵션화)
@@ -86,27 +87,32 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     const startKeys = new Set(['Enter', 'Space'])
     if (!event.repeat && startKeys.has(event.code) && (state.mode === 'menu' || state.mode === 'ended')) {
       event.preventDefault()
+      audio.initAudio()
       startRun(state)
     }
   }
 
   const onStartClick = () => {
+    audio.initAudio()
     startRun(state)
   }
 
   const onStartPointer = (event) => {
     if (state.mode !== 'menu') return
     if (event && typeof event.preventDefault === 'function') event.preventDefault()
+    audio.initAudio()
     startRun(state)
   }
 
   const onStartOverlayClick = (event) => {
     if (state.mode !== 'menu') return
     event.preventDefault()
+    audio.initAudio()
     startRun(state)
   }
 
   const onRestartClick = () => {
+    audio.initAudio()
     startRun(state)
   }
 
@@ -177,12 +183,28 @@ export function startGame({ canvas, hudRoot, startOverlay, helpOverlay, endOverl
     const justPressedAccelerate = controls.accelerate && !prevControls.accelerate
 
     if (state.mode === 'menu' && (controls.accelerate || controls.left || controls.right || controls.brake)) {
+      audio.initAudio()
       startRun(state)
     } else if (state.mode === 'ended' && justPressedAccelerate) {
+      audio.initAudio()
       startRun(state)
     }
 
     updateState(state, controls, dt)
+
+    if (state.audioEvents && state.audioEvents.length > 0) {
+      for (const ev of state.audioEvents) {
+        if (ev.name === 'door') audio.playDoor(ev.args.open)
+        else if (ev.name === 'board') audio.playBoard()
+        else if (ev.name === 'drop') audio.playDrop()
+        else if (ev.name === 'score') audio.playScore(ev.args.quality)
+        else if (ev.name === 'crash') audio.playCrash()
+        else if (ev.name === 'miss') audio.playMiss()
+      }
+      state.audioEvents.length = 0
+    }
+    audio.updateEngine(state.speed, state.speedMax, controls.brake)
+
     state.roadSamples = buildRoadSamples(state.distance, state)
     propBuildAccumulator += dt
     state.props = buildProps(state.roadSamples, state)
