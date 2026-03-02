@@ -32,7 +32,6 @@ export function createHud(rootElement) {
   if (
     !timerElement ||
     !navElement ||
-    !messageElement ||
     !stampElement ||
     !speedElement ||
     !speedFillElement ||

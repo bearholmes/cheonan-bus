@@ -35,26 +35,27 @@ body,
   position: fixed;
   top: 0;
   left: 0;
-  right: 0;
+  right: auto;
   pointer-events: none;
-  padding: 14px 16px;
+  padding: 12px;
+  width: min(320px, calc(100vw - 24px));
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   font-family: 'Noto Sans KR', 'Segoe UI', sans-serif;
 }
 
 .hud-main {
   display: flex;
-  gap: 0;
+  gap: 8px;
   justify-content: space-between;
-  width: min(460px, calc(100vw - 32px));
-  padding: 10px 12px;
+  width: 100%;
+  padding: 6px 10px;
   box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid rgba(145, 190, 214, 0.45);
-  background: rgba(5, 14, 22, 0.82);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+  border-radius: 10px;
+  border: 1px solid rgba(145, 190, 214, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
 }
 
 .hud-box {
@@ -76,19 +77,20 @@ body,
 }
 
 .hud-label {
-  font-size: 12px;
-  letter-spacing: 0.02em;
-  color: #8cb3c9;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: #9bb9cb;
   text-shadow: none;
+  text-transform: uppercase;
 }
 
 .hud-timer {
-  margin-top: 4px;
-  font-size: 44px;
+  margin-top: 2px;
+  font-size: 34px;
   line-height: 1;
-  font-weight: 700;
+  font-weight: 800;
   color: #fff26f;
-  text-shadow: 0 0 14px rgba(255, 242, 111, 0.2);
+  text-shadow: 0 0 10px rgba(255, 242, 111, 0.18);
 }
 
 .hud-speed-row {
@@ -137,50 +139,36 @@ body,
   color: #ffd1d6;
   opacity: 0.9;
   text-shadow: 1px 1px 0 #000;
-  width: min(460px, calc(100vw - 32px));
-}
-
-.hud-status {
-  margin-top: 0;
-  width: min(460px, calc(100vw - 32px));
-  padding: 10px 12px;
-  box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid rgba(145, 190, 214, 0.45);
-  background: rgba(5, 14, 22, 0.82);
-  font-size: 22px;
-  font-weight: 800;
-  color: #fff26f;
-  text-shadow: 0 0 10px rgba(255, 242, 111, 0.2);
+  width: 100%;
 }
 
 .hud-stamp {
   margin-top: 0;
-  width: min(460px, calc(100vw - 32px));
-  padding: 8px 12px;
+  width: 100%;
+  padding: 6px 10px;
   box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid rgba(145, 190, 214, 0.45);
-  background: rgba(5, 14, 22, 0.82);
-  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 190, 214, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
+  font-size: 12px;
+  font-weight: 600;
   color: #c2e8ff;
   text-shadow: none;
 }
 
-.hud-nav-row,
-.hud-stop-row {
-  width: min(460px, calc(100vw - 32px));
-  padding: 8px 12px;
+.hud-nav-row {
+  width: 100%;
+  padding: 6px 10px;
   box-sizing: border-box;
-  border-radius: 12px;
-  border: 1px solid rgba(145, 190, 214, 0.45);
-  background: rgba(5, 14, 22, 0.82);
+  border-radius: 10px;
+  border: 1px solid rgba(145, 190, 214, 0.28);
+  background: linear-gradient(180deg, rgba(8, 18, 28, 0.84), rgba(5, 12, 20, 0.78));
 }
 
 .hud-nav-row {
   display: flex;
   align-items: baseline;
-  gap: 0;
+  gap: 8px;
 }
 
 .hud-turn {
@@ -188,33 +176,10 @@ body,
 }
 
 .hud-nav {
-  font-size: 32px;
+  font-size: 22px;
+  font-weight: 800;
   line-height: 1.1;
   color: #eef8ff;
-  text-shadow: none;
-}
-
-.hud-stop-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.hud-stop-meter {
-  flex: 1;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-.hud-stop-fill {
-  height: 100%;
-}
-
-.hud-stop-distance {
-  font-size: 24px;
-  color: #d1ebff;
   text-shadow: none;
 }
 
@@ -251,7 +216,7 @@ body,
   justify-content: center;
   background: rgba(6, 12, 16, 0.62);
   backdrop-filter: blur(2px);
-  z-index: 5;
+  z-index: 6;
 }
 
 .overlay-card {
@@ -267,26 +232,61 @@ body,
 
 .overlay-card h1 {
   margin: 0 0 10px;
-  font-size: 24px;
+  font-size: 30px;
   color: #ecf8ff;
 }
 
 .overlay-card p {
-  margin: 0 0 8px;
-  color: #a9c5d8;
-  line-height: 1.4;
+  margin: 0 0 10px;
+  color: #d0e4f1;
+  line-height: 1.5;
 }
 
 .overlay-card button {
   pointer-events: auto;
-  margin-top: 10px;
+  margin-top: 14px;
   border: 0;
-  border-radius: 10px;
-  background: #54c8ff;
-  color: #04131b;
+  border-radius: 12px;
+  background: #fff26f;
+  color: #111a22;
   font-weight: 700;
-  padding: 11px 16px;
+  padding: 12px 18px;
   cursor: pointer;
+}
+
+#help-overlay {
+  z-index: 7;
+}
+
+.overlay-card-help {
+  width: min(720px, calc(100vw - 40px));
+}
+
+.overlay-card-help h1 {
+  font-size: 32px;
+  margin-bottom: 14px;
+}
+
+.overlay-card-help .help-live {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 190, 214, 0.28);
+  background: rgba(4, 12, 18, 0.55);
+  color: #f2f8fb;
+}
+
+.overlay-card-help .help-close {
+  margin-top: 8px;
+  color: #fff26f;
+}
+
+#end-summary {
+  white-space: pre-line;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.55;
+  color: #f3fbff;
 }
 
 .overlay-start {
@@ -392,15 +392,14 @@ body,
   #hud {
     padding: 10px;
     gap: 6px;
+    width: calc(100vw - 20px);
   }
 
   .hud-main,
   .hud-nav-row,
-  .hud-stop-row,
-  .hud-status,
   .hud-stamp,
   .hud-errors {
-    width: calc(100vw - 20px);
+    width: 100%;
   }
 
   .hud-timer {
@@ -408,19 +407,11 @@ body,
   }
 
   .hud-nav {
-    font-size: 24px;
-  }
-
-  .hud-status {
-    font-size: 18px;
+    font-size: 20px;
   }
 
   .hud-stamp {
-    font-size: 14px;
-  }
-
-  .hud-stop-distance {
-    font-size: 20px;
+    font-size: 11px;
   }
 
   .overlay-card-start {
