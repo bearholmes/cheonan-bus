@@ -673,7 +673,7 @@ export function createInitialState() {
     stopMarker: null,
     track,
 
-    hudLine: 'Space로 메뉴/도어 조작',
+    hudLine: '정차 후 문을 열어 승하차를 진행하세요',
     stamp: '대기 중',
     toastMessage: '',
     toastSeq: 0,
@@ -805,7 +805,7 @@ export function updateState(state, input, dt) {
 
   if (!isMenu && state.doorOpen && (input.accelerate || input.reverse)) {
     if (Math.round(state.distance * 10) % 10 === 0) {
-      pushToast(state, '문을 닫아야 출발할 수 있습니다 (Space)', 'alert')
+      pushToast(state, '문을 닫아야 출발할 수 있습니다', 'alert')
     }
   }
 
@@ -853,7 +853,7 @@ export function updateState(state, input, dt) {
       state.stopBestPrecision = Infinity
       state.hudLine = state.doorOpen
         ? '도어 개방: 정류장 박스+15m에서만 승하차 가능'
-        : 'W: 가속 | S: 브레이크 | R: 후진'
+        : '문 닫힘: 주행 상태'
     } else {
       pushToast(state, '완전히 멈춘 후(속도 0) 문을 여세요', 'bad')
     }
@@ -1006,7 +1006,7 @@ export function updateState(state, input, dt) {
       state.stopFlowTimer = 0
       state.stopBestPrecision = Infinity
       if (!state.doorOpen && stopInteraction.canService && speedAbs < 0.1) {
-        state.hudLine = '정류장 도착: Space로 문 열기'
+        state.hudLine = '정류장 도착: 문 열고 승하차 진행'
       } else if (!state.doorOpen && stopInteraction.withinRadius && !stopInteraction.insideBox && speedAbs < 2.5) {
         state.hudLine = '정류장 박스 안쪽으로 더 붙여 정차하세요'
       }
