@@ -118,9 +118,7 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
       speedMax: state.speedMax,
       stopHold: state.stopHoldTime
     })
-    hud.setSeats(state.seats)
     const stopDistance = state.nextStopDistance - state.distance
-    const turn = state.curveNow > 0.18 ? 'RIGHT' : state.curveNow < -0.18 ? 'LEFT' : 'STRAIGHT'
     const urgency = stopDistance < 30 ? 'alert' : stopDistance < 90 ? 'approach' : 'normal'
 
     // 텍스트 네비게이션(TURN)은 시인성을 위해 생략하거나 간소화함
@@ -156,8 +154,11 @@ export function startGame({ canvas, hudRoot, startOverlay, endOverlay, startButt
                 ? '차량 이탈'
                 : '종료'
       const score = Number.isFinite(state.score) ? Math.max(0, Math.round(state.score)) : 0
-      const bestCombo = Number.isFinite(state.bestStopCombo) ? Math.max(0, state.bestStopCombo) : 0
-      endSummary.textContent = `${label} · 점수 ${score} · 최대콤보 x${bestCombo} · 목표 정차 ${stageDone}/${stageTarget} · 미정차 ${missedStops}/3 · 승객 ${state.passengers}/${state.targetPassengers}`
+      const attemptedStops = stageDone + missedStops
+      const successRate = attemptedStops > 0 ? Math.round((stageDone / attemptedStops) * 100) : 0
+      const safety = Number.isFinite(state.safety) ? Math.max(0, Math.round(state.safety)) : 0
+      const grade = state.grade || 'C'
+      endSummary.textContent = `${label} · 점수 ${score} · 정차성공률 ${successRate}% · 안전도 ${safety} · 등급 ${grade}`
     }
   }
 

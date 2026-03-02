@@ -42,3 +42,23 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Gameplay Patch: added score/combo loop hooks for stop clear and render text payload (`score`, `combo`, `bestCombo`) plus miss-stop time penalty reset behavior.
 - Validation: `npm run build` passes after seat/gameplay patches.
 - Validation: Playwright run produced fresh artifacts at `output/web-game/gameplay-refresh-3`; reviewed screenshots for top HUD + seat panel + speedometer bottom-right persistence.
+- Gameplay Rule Patch: mission constants aligned to current spec (`120s`, `8` stops target, miss fail at `3`), end summary includes score/success-rate/safety/grade line.
+- Gameplay Rule Patch: stop demand now starts with onboard passengers (`INITIAL_ONBOARD_PASSENGERS=8`) so first stop also has realistic drop demand; per-stop demand verified in range (drop 1..4, board 2..8).
+- Gameplay Rule Patch: removed top-right seating panel from active HUD flow (`main.js` markup removed, `hud.setSeats` call removed, dynamic seating builder removed from `hud.js`).
+- HUD Patch: top interface now centered on 4 items only: 남은시간 / 다음정류장거리 / 지금할일 / 점수·콤보. Speedometer remains bottom-right.
+- Bugfix: hard-brake impact/safety penalties were firing at near-zero speed; added speed thresholds so impact penalties only apply at meaningful speed.
+- Readme Patch: `README.md` updated with current gameplay rules and win/fail criteria.
+- Validation: syntax checks pass (`node --check` for state/game/hud).
+- Validation: `npm run build` passes after patches.
+- Validation: Playwright run captured latest artifacts at `output/web-game/rules-v2-check-2` (shots + state JSON), no errors file generated.
+- Validation: screenshot review confirms HUD now shows only 4 top info blocks and speedometer is bottom-right.
+- Validation: deterministic state simulations confirm
+  - fail on 3 missed stops,
+  - service blocked outside stop box (even nearby),
+  - service allowed in stop zone,
+  - demand range drop 1..4 / board 2..8,
+  - success triggers at 8 served stops.
+
+## TODO / Next agent notes
+- If user wants stricter “UI 4개만” globally (including speedometer/toast/errors), remove those extra elements too. Current patch interprets it as “상단 인터페이스 4개”.
+- Consider rebalancing safety penalties after live play feedback (currently conservative at low speed, punitive at high speed).
