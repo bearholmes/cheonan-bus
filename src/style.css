@@ -84,6 +84,23 @@ body,
   text-transform: uppercase;
 }
 
+.hud-door {
+  margin-top: 2px;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+  color: #ff6f6f;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.hud-door.door-open {
+  color: #8bff8b;
+}
+
+.hud-door.door-closed {
+  color: #ff8f91;
+}
+
 .hud-timer {
   margin-top: 2px;
   font-size: 34px;
@@ -208,6 +225,49 @@ body,
   display: none !important;
 }
 
+.hud-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 94px;
+  transform: translateX(-50%);
+  min-width: 320px;
+  max-width: min(720px, calc(100vw - 28px));
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(136, 184, 209, 0.35);
+  background: rgba(6, 16, 24, 0.9);
+  color: #f4fbff;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  z-index: 11;
+}
+
+.toast-info {
+  border-color: rgba(136, 184, 209, 0.35);
+  color: #e9f7ff;
+}
+
+.toast-good {
+  border-color: rgba(123, 219, 161, 0.45);
+  color: #d4ffe5;
+  background: rgba(9, 30, 18, 0.88);
+}
+
+.toast-alert {
+  border-color: rgba(244, 212, 103, 0.55);
+  color: #fff1a9;
+  background: rgba(38, 31, 8, 0.9);
+}
+
+.toast-bad {
+  border-color: rgba(255, 133, 133, 0.6);
+  color: #ffd9d9;
+  background: rgba(40, 12, 12, 0.9);
+}
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -281,12 +341,40 @@ body,
   color: #fff26f;
 }
 
-#end-summary {
-  white-space: pre-line;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.55;
-  color: #f3fbff;
+.overlay-card-end {
+  width: min(640px, calc(100vw - 36px));
+}
+
+.end-reason {
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff26f;
+  margin-bottom: 12px;
+}
+
+.end-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.end-metric {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(145, 190, 214, 0.26);
+  background: rgba(4, 12, 18, 0.52);
+}
+
+.end-metric span {
+  display: block;
+  font-size: 12px;
+  color: #9fc2d8;
+  margin-bottom: 2px;
+}
+
+.end-metric strong {
+  font-size: 26px;
+  color: #f4fbff;
 }
 
 .overlay-start {
@@ -421,6 +509,13 @@ body,
   .overlay-card-start button {
     min-width: 0;
     width: 100%;
+  }
+
+  .hud-toast {
+    min-width: 0;
+    width: calc(100vw - 20px);
+    bottom: 90px;
+    font-size: 14px;
   }
 }
 

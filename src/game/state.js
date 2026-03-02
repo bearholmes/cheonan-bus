@@ -9,16 +9,16 @@ const NATURAL_DECEL = 12.0
 const CENTRIFUGAL = 0.25
 const ROAD_HALF_WIDTH = 11.6
 const STOP_SERVICE_RADIUS = 15
-const STOP_ZONE_HALF_WIDTH = 4.4
-const STOP_ZONE_HALF_LENGTH = 2.8
-const STOP_ZONE_OFFSET = 5
+const STOP_ZONE_HALF_WIDTH = 5.6
+const STOP_ZONE_HALF_LENGTH = 9.0
+const STOP_ZONE_OFFSET = 3.0
 const STOP_FLOW_INTERVAL = 0.55
 const STOP_CLEAR_TIME_BONUS = 7
 const MAX_MISSION_TIME = 150
 const MISS_TIME_PENALTY = 9
 const PERFECT_STOP_RADIUS = 1.5
 const GOOD_STOP_RADIUS = 3.5
-const STOP_MISS_DISTANCE = 150
+const STOP_MISS_DISTANCE = 280
 const MAX_MISSED_STOPS = 3
 const STOP_GAP_BASE = 400
 const STOP_GAP_VARIATION = 200
@@ -33,6 +33,7 @@ const SAFE_SPEED_LIMIT = 68
 const HARD_BRAKE_THRESHOLD = 55
 const SHARP_STEER_THRESHOLD = 0.75
 const IMPACT_SCORE_PENALTY = 220
+const SIMPLE_RULES = true
 
 const SEGMENT_LENGTH = 2.6
 const VISIBLE_SEGMENTS = 132
@@ -175,25 +176,36 @@ function advanceStop(state) {
 }
 
 function computeStopInteraction(state) {
-  const stopPoint = sampleTrackPoint(state, state.nextStopDistance)
-  const zoneX = stopPoint.centerX + stopPoint.rightX * STOP_ZONE_OFFSET
-  const zoneZ = stopPoint.centerZ + stopPoint.rightZ * STOP_ZONE_OFFSET
-  const dx = state.worldX - zoneX
-  const dz = state.worldZ - zoneZ
-  const forwardX = Math.sin(stopPoint.heading)
-  const forwardZ = Math.cos(stopPoint.heading)
+  const marker = state.stopMarker
+  if (marker) {
+    const dx = state.worldX - marker.zoneX
+    const dz = state.worldZ - marker.zoneZ
+    const forwardX = Math.sin(marker.heading)
+    const forwardZ = Math.cos(marker.heading)
+    const localRight = dx * marker.rightX + dz * marker.rightZ
+    const localForward = dx * forwardX + dz * forwardZ
+    const radialDistance = Math.hypot(dx, dz)
+    const insideBox = Math.abs(localRight) <= STOP_ZONE_HALF_WIDTH && Math.abs(localForward) <= STOP_ZONE_HALF_LENGTH
+    const withinRadius = radialDistance <= STOP_SERVICE_RADIUS
+    return {
+      radialDistance,
+      insideBox,
+      withinRadius,
+      canService: insideBox && withinRadius
+    }
+  }
 
-  const localRight = dx * stopPoint.rightX + dz * stopPoint.rightZ
-  const localForward = dx * forwardX + dz * forwardZ
-  const radialDistance = Math.hypot(dx, dz)
-  const insideBox = Math.abs(localRight) <= STOP_ZONE_HALF_WIDTH && Math.abs(localForward) <= STOP_ZONE_HALF_LENGTH
-  const withinRadius = radialDistance <= STOP_SERVICE_RADIUS
+  const forwardDelta = state.nextStopDistance - state.distance
+  const lateralDelta = state.playerX - STOP_ZONE_OFFSET
+  const radialDistance = Math.hypot(lateralDelta, forwardDelta)
+  const insideBox = Math.abs(lateralDelta) <= STOP_ZONE_HALF_WIDTH && Math.abs(forwardDelta) <= STOP_ZONE_HALF_LENGTH
+  const withinRadius = Math.abs(forwardDelta) <= STOP_SERVICE_RADIUS
 
   return {
     radialDistance,
     insideBox,
     withinRadius,
-    canService: insideBox && withinRadius
+    canService
   }
 }
 
@@ -215,14 +227,13 @@ function completeCurrentStop(state, toastText) {
     precisionBonus = 80
   }
 
-  const comboMultiplier = 1 + state.stopCombo * 0.18
   const baseScore = 180 + movedTotal * 24 + precisionBonus
-  const gainedScore = Math.max(0, Math.round(baseScore * comboMultiplier))
+  const gainedScore = Math.max(0, Math.round(baseScore))
   state.score += gainedScore
   state.lastStopScore = gainedScore
   state.lastStopQuality = quality
-  state.stopCombo += 1
-  state.bestStopCombo = Math.max(state.bestStopCombo, state.stopCombo)
+  state.stopCombo = 0
+  state.bestStopCombo = 0
 
   state.stopsServed += 1
   state.stageStopsDone = Math.min(state.stageStopsTarget, state.stageStopsDone + 1)
@@ -758,8 +769,6 @@ export function startRun(state) {
   resetStopDemand(state)
 
   state.hudLine = `목표: ${INITIAL_MISSION_TIME}초 내 정류장 ${STAGE_STOP_TARGET}개 처리`
-  pushToast(state, '운행 시작', 'info')
-
   state.roadSamples = buildRoadSamples(0, state)
   state.props = buildProps(state.roadSamples, state)
   state.stopMarker = buildStopMarker(state)
@@ -785,7 +794,7 @@ export function updateState(state, input, dt) {
   const step = Math.min(dt, 0.1)
   const isMenu = state.mode === 'menu'
 
-  if (!isMenu) {
+  if (!isMenu && !SIMPLE_RULES) {
     state.missionTime -= step
     if (state.missionTime <= 0) {
       state.missionTime = 0
@@ -888,7 +897,23 @@ export function updateState(state, input, dt) {
 
   let projection = projectWorldToTrack(state, state.worldX, state.worldZ, projectionBefore.distance)
 
-  const maxOffRoad = ROAD_HALF_WIDTH * 1.8
+  if (!isMenu) {
+    const assistBySpeed = clamp((speedAbs - 8) / 40, 0, 1)
+    const steerRelax = clamp(1 - Math.abs(state.steeringValue), 0, 1)
+    const laneAssist = assistBySpeed * steerRelax
+
+    if (laneAssist > 0) {
+      const lateralCorrection = projection.lateral * laneAssist * step * 1.6
+      state.worldX -= projection.rightX * lateralCorrection
+      state.worldZ -= projection.rightZ * lateralCorrection
+      projection = projectWorldToTrack(state, state.worldX, state.worldZ, projection.distance)
+
+      const headingError = normalizeAngle(projection.heading - state.worldYaw)
+      state.worldYaw = normalizeAngle(state.worldYaw + headingError * laneAssist * step * 2.2)
+    }
+  }
+
+  const maxOffRoad = ROAD_HALF_WIDTH * 1.3
   const clampedOffset = clamp(projection.lateral, -maxOffRoad, maxOffRoad)
   if (clampedOffset !== projection.lateral) {
     state.worldX = projection.centerX + projection.rightX * clampedOffset
@@ -933,10 +958,9 @@ export function updateState(state, input, dt) {
     if ((severeBrakeImpact || roadEdgeImpact) && state.impactCooldown <= 0) {
       state.impactCooldown = 1.1
       state.impactCount += 1
-      state.stopCombo = 0
       state.score = Math.max(0, state.score - IMPACT_SCORE_PENALTY)
       state.safetyPenaltyTotal += IMPACT_SCORE_PENALTY
-      pushToast(state, '충격! 콤보 리셋 · 점수 페널티', 'bad')
+      pushToast(state, '충격! 점수 페널티', 'bad')
     }
   }
 
@@ -1012,10 +1036,12 @@ export function updateState(state, input, dt) {
       }
     }
 
-    if (!stopHandledThisStep && distToStop < -STOP_MISS_DISTANCE) {
+    const movingAwayPastStop = distToStop < -STOP_MISS_DISTANCE && state.speed > 1.5
+    const tooFarPastStop = distToStop < -(STOP_MISS_DISTANCE + 80)
+
+    if (!stopHandledThisStep && (movingAwayPastStop || tooFarPastStop)) {
       advanceStop(state)
       state.missedStops += 1
-      state.stopCombo = 0
       state.missionTime = Math.max(0, state.missionTime - MISS_TIME_PENALTY)
       pushToast(state, `정류장 놓침! (${state.missedStops}/${MAX_MISSED_STOPS})`, 'bad')
 
@@ -1033,6 +1059,8 @@ export function updateState(state, input, dt) {
         state.grade = calcGrade(state)
         state.hudLine = '미정차 누적 한도 초과로 운행 실패'
       }
+    } else if (!state.doorOpen && distToStop < -8 && distToStop >= -STOP_MISS_DISTANCE) {
+      state.hudLine = '정류장 지나침: 후진으로 박스 재진입 가능'
     }
   }
 }

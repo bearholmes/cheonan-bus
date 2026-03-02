@@ -20,6 +20,7 @@ export function createHud(rootElement) {
   const timerElement = rootElement.querySelector('[data-role="timer"]')
   const turnElement = rootElement.querySelector('[data-role="turn"]')
   const navElement = rootElement.querySelector('[data-role="nav"]')
+  const doorElement = rootElement.querySelector('[data-role="door"]')
   const messageElement = rootElement.querySelector('[data-role="message"]')
   const stampElement = rootElement.querySelector('[data-role="stamp"]')
   const speedElement = rootElement.querySelector('[data-role="speed"]')
@@ -78,6 +79,13 @@ export function createHud(rootElement) {
     speedFillElement.classList.toggle('speed-high', speedPct >= 0.82)
   }
 
+  function setDoorState(doorOpen) {
+    if (!doorElement) return
+    doorElement.textContent = doorOpen ? '열림' : '닫힘'
+    doorElement.classList.toggle('door-open', doorOpen)
+    doorElement.classList.toggle('door-closed', !doorOpen)
+  }
+
   function setMessage(line) {
     if (messageElement) messageElement.textContent = line
   }
@@ -89,8 +97,16 @@ export function createHud(rootElement) {
   function showToast(text, kind = 'info') {
     if (!text || !toastElement) return
     toastElement.textContent = text
-    toastElement.classList.remove('hidden', 'toast-info', 'toast-good', 'toast-bad')
-    toastElement.classList.add(kind === 'good' ? 'toast-good' : kind === 'bad' ? 'toast-bad' : 'toast-info')
+    toastElement.classList.remove('hidden', 'toast-info', 'toast-good', 'toast-bad', 'toast-alert')
+    toastElement.classList.add(
+      kind === 'good'
+        ? 'toast-good'
+        : kind === 'bad'
+          ? 'toast-bad'
+          : kind === 'alert'
+            ? 'toast-alert'
+            : 'toast-info'
+    )
     if (toastHandle) {
       clearTimeout(toastHandle)
     }
@@ -119,6 +135,7 @@ export function createHud(rootElement) {
     setTimer,
     setNav,
     setTelemetry,
+    setDoorState,
     setMessage,
     setStamp,
     showToast,
