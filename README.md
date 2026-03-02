@@ -31,10 +31,6 @@ npm install
 npm run dev
 ```
 
-## Scripts
-- `npm run dev`: 개발 서버 실행 (`0.0.0.0:5173`)
-- `npm run build`: 프로덕션 빌드
-- `npm run preview`: 빌드 결과 미리보기 (`0.0.0.0:4173`)
 
 ## Controls
 - `Enter` / `Space`: 메뉴/결과 화면에서 운행 시작
