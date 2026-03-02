@@ -89,3 +89,5 @@ Original prompt: 어설픈 2.5d로 인해 트랙과 지형지물이 깜박거리
 - Skill check (2026-03-02): `$WEB_GAME_CLIENT` now runs after installing `playwright` under `~/.codex`, but click step failed on `#start-btn` timeout at `http://localhost:5173` (start button not present/ready at run time).
 - Hotfix (2026-03-02): fixed broken render caused by misplaced `heavyFrameToggle` lines outside function scope in `src/renderer/scene.js`; moved update toggle inside `draw()` and removed trailing stray lines.
 - Skill validation (2026-03-02): reran `$WEB_GAME_CLIENT` after clearing old artifacts; `shot-0.png` generated with visible scene and no fresh `errors-0.json` output.
+- Performance hard-cut (2026-03-02): disabled lane instance drawing and disabled prop generation/rendering entirely for stutter reduction (`ENABLE_LANES=false`, `ENABLE_PROPS=false` in `src/renderer/scene.js`; early empty return in `buildProps()` in `src/game/state.js`).
+- Validation (2026-03-02): build passed; `$WEB_GAME_CLIENT` run generated fresh `output/web-game/shot-0.png` with no new `errors-0.json`.
