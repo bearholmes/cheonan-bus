@@ -1,13 +1,9 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/bus-favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>busdrivevite</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
-</html>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg"><title>천안버스 · CHEONAN BUS</title><link rel="stylesheet" href="/src/style.css"></head><body data-phase="menu">
+
+<main><section class="game"><div class="scene"><canvas id="world" aria-label="천안 시내 3D 버스 운행 화면"></canvas><div class="top-hud"><div class="live"><i></i><span id="phase">운행 준비</span><small>CHEONAN, KOREA</small></div><div class="timer"><small>남은 운행 시간</small><strong id="time">07:00</strong><span>8개 정류장 · 약 3km의 여정</span></div><div class="weather">☀ <b>맑음</b><small>도심 순환 · DAYTIME</small></div></div>
+<div class="intro" id="intro"><div class="eyebrow">자율주행 데모 · 운행을 시작해 보세요</div><h1>오늘도, 안전하게.<br><span>천안버스</span></h1><p>익숙한 거리, 기다리는 사람들.<br>8개의 정류장을 잇는 당신의 운행이 시작됩니다.</p><button id="start">운행 시작 <span>→</span></button><small><kbd>Enter</kbd> 또는 <kbd>Space</kbd>로 시작</small><div class="intro-metrics"><span><b>420</b>초 운행</span><span><b>8</b>개 정류장</span><span><b>3</b>회 미정차 시 종료</span></div></div>
+<div id="result" class="result" hidden><div class="eyebrow">운행 결과</div><h1 id="result-title"></h1><p id="result-line"></p><button id="restart">다시 운행하기 →</button></div>
+<div id="toast" class="toast" hidden></div><div class="street-caption"><span>천안역 일대</span><small>실제 지명을 참고한 게임용 가상 노선</small></div>
+</div><div class="dashboard"><div class="speed"><strong id="speed">0</strong><span>km/h</span><div><b id="gear">D</b><small>제한속도 50</small></div></div><div class="drive-status"><span><i id="door-light"></i> <b id="door-state">도어 닫힘</b></span><small id="instruction">운행을 시작하면 경로 안내가 표시됩니다</small></div><div class="dash-stat"><small>안전도</small><b id="safety">100<span>%</span></b><div class="bar"><i id="safety-bar"></i></div></div><div class="dash-stat"><small>운행 점수</small><b id="score">0000</b><span id="combo">COMBO ×1.0</span></div></div></section>
+<aside><div class="side-heading"><span>ROUTE GUIDE</span><b>운행 안내</b><span class="number">01</span></div><div class="next"><small>다음 정류장</small><h2 id="next-name">천안역</h2><div><span>정류장까지 <b id="distance">200</b> m</span><span class="tag">정차 예정</span></div></div><div id="navigation" class="navigation">290m 앞 우회전 →</div><div class="progress-title"><b>도심 순환 노선</b><span><strong id="done">0</strong> / 8</span></div><ol id="stops"></ol><div class="boarding"><div><b>승하차 안내</b><span id="quality">정차 대기</span></div><p><span>↘ 하차 <b id="alight">—</b>명</span><span>↗ 탑승 <b id="board">—</b>명</span></p><div class="bar"><i id="boarding-bar"></i></div><small id="boarding-tip">정류장에 멈춘 후 문을 열어주세요</small></div><div class="miss"><span>미정차</span><b id="misses">○ ○ ○</b></div></aside></main>
+<footer><div class="controls"><span class="control-label">CONTROLS</span><span><kbd>W</kbd><kbd>↑</kbd> 가속</span><span><kbd>S</kbd><kbd>↓</kbd> 브레이크</span><span><kbd>A</kbd><kbd>D</kbd> 조향</span><span><kbd>R</kbd> 후진</span><span><kbd>Space</kbd> 도어</span></div><button id="sound" class="fullscreen-button" type="button" aria-label="엔진음 음소거" aria-pressed="false">소리 끄기</button><button id="fullscreen" class="fullscreen-button" aria-label="전체화면">⛶ 전체화면 <kbd>F</kbd></button><span class="footer-note"><i></i> 안전한 운전이 더 높은 점수를 만듭니다</span></footer><div class="touch"><button data-key="a">◀</button><button data-key="d">▶</button><button data-key="s">브레이크</button><button data-key="w">가속</button><button id="touch-door">도어</button></div><script type="module" src="/src/game.js"></script></body></html>
