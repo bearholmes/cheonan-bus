@@ -21,6 +21,12 @@ npm run preview
 
 `dist/`에 생성되는 정적 파일로 실행할 수 있습니다. 하위 경로에 배포한다면 `npm run build -- --base=/경로/`로 빌드합니다.
 
+## GitHub Pages
+
+기존 GitHub Pages 배포 워크플로를 유지합니다. `main` 또는 `master`에 푸시하거나 GitHub Actions에서 수동 실행하면 테스트와 빌드를 통과한 `dist/`를 배포합니다. 저장소의 Pages 설정에서 배포 원본은 **GitHub Actions**로 지정합니다.
+
+프로젝트 저장소의 하위 경로는 저장소 이름으로 자동 설정합니다. `releases/v2` 작업만으로 원격 배포가 실행되지는 않습니다.
+
 ## v2 코드
 
 `releases/v2`에는 최신 게임 코드를 옮겼습니다. 게임은 Vite와 순수 WebGL로 실행하며, 운행 결과에는 점수·정차성공률·안전도·등급을 표시합니다. 기존 Git 이력과 GitHub 원격은 유지하고 이전 코드는 `releases/v1`에 보존합니다.
