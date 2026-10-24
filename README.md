@@ -1,54 +1,49 @@
-# 천안버스 (Cheonan Bus)
+# 천안버스
 
-Pure WebGL 기반 3D 버스 운행 게임 프로젝트입니다.  
+순수 WebGL 3D 버스 운행 시뮬레이션. 천안 지명을 참고한 게임용 가상 순환 노선입니다.
 
-## Gameplay Rules (현행)
-- 목표: `120초` 안에 `정류장 8개` 처리
-- 성공: `8개 정차 완료`
-- 실패: `시간 초과` 또는 `미정차 3회 누적`
-- 정차 품질:
-  - `Perfect`: 정류장 중심 ±1.5m (보너스 점수 + 시간)
-  - `Good`: 기본 보상
-  - `Bad`: 보너스 없음
-- 승하차 조건: `정류장 박스 내부` + `반경 15m 이내` + `속도 0` + `문 열림`일 때만 진행
-- 승하차 수요: 각 정류장마다 `하차 1~4`, `탑승 2~8` 생성
-- 승하차 속도: 정차 정확도(Perfect/Good/Bad)에 따라 처리 속도 차등
-- 리스크-리워드: 과속/급브레이크/급조향으로 안전도 하락 및 점수 페널티
-- 콤보: 연속 정차 성공 시 배율 증가, 미정차/충격 시 콤보 리셋
-- 결과: `점수 · 정차성공률 · 안전도 · 등급(S/A/B/C)` 한 줄 표시
+## 실행
 
-## Tech Stack
-- `Vite`
-- `WebGL (pure)`
-- `gl-matrix`
-- `Playwright` (시나리오 검증)
+Node.js 22.13 이상이 필요합니다.
 
-## Quick Start
-```bash
-git clone <repo-url>
-cd BusDriveVite-prod
-npm install
+```sh
+npm ci
 npm run dev
 ```
 
+브라우저에서 http://127.0.0.1:5173/ 을 엽니다.
 
-## Controls
-- `Enter` / `Space`: 메뉴/결과 화면에서 운행 시작
-- `W` / `ArrowUp`: 가속
-- `S` / `ArrowDown`: 브레이크
-- `R`: 후진
-- `A,D` / `ArrowLeft,ArrowRight`: 조향
-- `Space`: 정지 상태에서 도어 열기/닫기
-- `F`: 전체화면 토글
-
-## Test Hooks
-- `window.render_game_to_text()`: 현재 플레이 상태 JSON 반환
-- `window.advanceTime(ms)`: 고정 스텝 기반 시간 전진
-
-## Project Structure
-```text
-src/
-  game/        # 상태/입력/HUD/게임 루프
-  renderer/    # WebGL 렌더러
-  math/        # 수학 유틸(gl-matrix 래핑)
+```sh
+npm test
+npm run build
+npm run preview
 ```
+
+`dist/`에 생성되는 정적 파일로 실행할 수 있습니다. 하위 경로에 배포한다면 `npm run build -- --base=/경로/`로 빌드합니다.
+
+## GitHub Pages
+
+기존 GitHub Pages 배포 워크플로를 유지합니다. `main` 또는 `master`에 푸시하거나 GitHub Actions에서 수동 실행하면 테스트와 빌드를 통과한 `dist/`를 배포합니다. 저장소의 Pages 설정에서 배포 원본은 **GitHub Actions**로 지정합니다.
+
+프로젝트 저장소의 하위 경로는 저장소 이름으로 자동 설정합니다. `releases/v2` 작업만으로 원격 배포가 실행되지는 않습니다.
+
+## v2 코드
+
+`releases/v2`에는 최신 게임 코드를 옮겼습니다. 게임은 Vite와 순수 WebGL로 실행하며, 운행 결과에는 점수·정차성공률·안전도·등급을 표시합니다. 기존 Git 이력과 GitHub 원격은 유지하고 이전 코드는 `releases/v1`에 보존합니다.
+
+## 조작
+Enter/Space 시작, W/↑ 가속, S/↓ 브레이크, A/D/←/→ 조향, R 후진, 정지 중 Space 도어, F 전체화면.
+
+## 판정
+420초, 8개 정차 성공, 시간 초과 또는 미정차 3회 실패. 정류장 박스는 중심으로 좌우 2m 및 전후 10m, 추가로 반경 15m, 속도 0, 도어 열림을 모두 검사합니다. Perfect는 중심 1.5m 이내, Good 5m 이내, 나머지는 Bad입니다. 승하차 속도는 초당 4.5/3/1.8명. Perfect 보상은 400점과 3초, Good 250점, Bad 기본 150점. 연속 성공마다 배율이 0.2 증가합니다. 미정차 및 연석 충격은 콤보를 초기화합니다.
+
+## 시각 참고
+- 천안 전기저상버스의 파란 도색: https://www.ccnnews.co.kr/news/articleView.html?idxno=193863
+- 천안역과 종합터미널 도시 맥락: https://deptmapp.shinsegae.com/store/main.do?storeCd=SC00009
+사진은 참고에만 사용했으며 3D 모델은 코드로 제작했습니다. 실제 노선 및 지형의 정밀 복제는 아닙니다.
+
+## 검증 범위
+규칙 9개, 회전 코스 자동 주행·오디오 상태 테스트와 프로덕션 빌드가 통과했습니다. 정적 빌드의 HTTP 200, 실제 브라우저의 게임 시작·가속·브레이크를 확인했으며, 브라우저 콘솔 오류는 없었습니다. 전체 8개 정류장의 수동 운행은 별도 확인이 필요합니다.
+
+## 확장 코스
+최고속도 100km/h, 정류장 간격 400m, 첫 정류장 200m, 마지막 정류장 3,000m. 좌우 90도 회전 구간은 반경 약 70m입니다. 제한속도 50km/h의 과속 감점은 유지합니다. 회전 코스 검증: `node tests/course.test.mjs`.

@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import{createState,canBoard,quality,update,toggleDoor,grade}from '../src/engine.js';
+let tests=0;function test(name,fn){fn();tests++;console.log('PASS',name)}const make=()=>{let s=createState(()=>.5);s.phase='playing';return s};
+test('420 seconds, 8 stops, demand ranges',()=>{for(let k=0;k<100;k++){let s=createState();assert.equal(s.time,420);assert.equal(s.stops.length,8);for(let t of s.stops){assert(t.off>=1&&t.off<=4);assert(t.on>=2&&t.on<=8)}}});
+test('Boarding requires box, radius, zero speed and door',()=>{let s=make(),t=s.stops[0];s.z=t.z;s.door=true;assert(canBoard(s,t));s.v=.01;assert(!canBoard(s,t));s.v=0;s.door=false;assert(!canBoard(s,t));s.door=true;s.x=t.x+2.01;assert(!canBoard(s,t));s.x=t.x;s.z=t.z+10.01;assert(!canBoard(s,t))});
+test('Exact quality boundaries',()=>{let s=make(),t=s.stops[0];s.z=t.z+1.5;assert.equal(quality(s,t),'Perfect');s.z=t.z+1.501;assert.equal(quality(s,t),'Good');s.z=t.z+5.01;assert.equal(quality(s,t),'Bad')});
+test('Door interlock',()=>{let s=make();s.v=2;toggleDoor(s);assert.equal(s.door,false);s.v=0;toggleDoor(s);update(s,new Set(['w']),.5);assert.equal(s.v,0)});
+test('All eight complete, bonus and result grade',()=>{let s=make();for(let t of s.stops){s.z=t.z;s.x=t.x;s.v=0;s.door=true;let guard=0;while(t.status==='pending'&&guard++<500)update(s,new Set(),1/60);assert.equal(t.status,'complete')}assert.equal(s.done,8);assert.equal(s.phase,'success');assert(s.score>3000);assert.equal(grade(s),'S')});
+test('3 missed stops fail and reset combo',()=>{let s=make();s.combo=4;for(let i=0;i<3;i++){s.z=s.stops[i].z+17;update(s,new Set(),1/60)}assert.equal(s.misses,3);assert.equal(s.combo,0);assert.equal(s.phase,'failed')});
+test('Time expires',()=>{let s=make();s.time=.01;update(s,new Set(),.02);assert.equal(s.phase,'failed')});
+test('Speed, braking, steering and impact penalties',()=>{for(const keys of[new Set(),new Set(['s']),new Set(['a'])]){let s=make();s.v=20;update(s,keys,.1);assert(s.safety<100)}let s=make();s.x=9;s.combo=3;update(s,new Set(),.1);assert.equal(s.combo,0);assert(s.safety<100)});
+test('Quality controls service speed',()=>{let speeds=[];for(let offset of[0,3,7]){let s=make();s.z=s.stops[0].z+offset;s.door=true;update(s,new Set(),.1);speeds.push(s.stops[0].progress)}assert(speeds[0]>speeds[1]&&speeds[1]>speeds[2])});console.log(`${tests} rule checks passed`);

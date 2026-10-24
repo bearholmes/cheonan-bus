@@ -1,248 +1,49 @@
-// Simple Web Audio API Synthesizer for Cheonan Bus
-
-let ctx = null
-let masterGain = null
-let engineOsc = null
-let engineGain = null
-let brakeNoise = null
-let brakeGain = null
-let bgmOsc1 = null
-let bgmOsc2 = null
-let bgmGain = null
-
-// Musical scale for BGM (Pentatonic)
-const notes = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25]
-let bgmStep = 0
-let bgmTimer = null
-
-export function initAudio() {
-    if (!ctx) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext
-        if (!AudioContext) return // Not supported
-        ctx = new AudioContext()
-
-        masterGain = ctx.createGain()
-        masterGain.gain.value = 0.5
-        masterGain.connect(ctx.destination)
-
-        // Engine setup
-        engineOsc = ctx.createOscillator()
-        engineOsc.type = 'sawtooth'
-        engineGain = ctx.createGain()
-        engineGain.gain.value = 0
-        engineOsc.connect(engineGain)
-        engineGain.connect(masterGain)
-        engineOsc.start()
-
-        // Brake setup (noise)
-        const bufferSize = ctx.sampleRate * 2 // 2 seconds
-        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate)
-        const data = buffer.getChannelData(0)
-        for (let i = 0; i < bufferSize; i++) {
-            data[i] = Math.random() * 2 - 1
-        }
-        brakeNoise = ctx.createBufferSource()
-        brakeNoise.buffer = buffer
-        brakeNoise.loop = true
-
-        // Filter for brake noise
-        const filter = ctx.createBiquadFilter()
-        filter.type = 'highpass'
-        filter.frequency.value = 4000
-        brakeNoise.connect(filter)
-
-        brakeGain = ctx.createGain()
-        brakeGain.gain.value = 0
-        filter.connect(brakeGain)
-        brakeGain.connect(masterGain)
-        brakeNoise.start()
-
-        // BGM Setup
-        bgmGain = ctx.createGain()
-        bgmGain.gain.value = 0.1
-        bgmGain.connect(masterGain)
-        startBgm()
-    }
-
-    if (ctx.state === 'suspended') {
-        ctx.resume()
-    }
+// A small synthesized diesel engine: combustion harmonics, intake noise and rumble.
+// One graph is reused across runs; no audio is created until a user gesture.
+export function engineParameters(speed, accelerating) {
+ const kmh=Math.min(100,Math.abs(speed)*3.6);
+ const gear=Math.min(4,Math.floor(kmh/22));
+ const revs=Math.min(1,(kmh-gear*22)/26);
+ return {frequency:30+revs*42+(accelerating?10:0),cutoff:230+revs*550+(accelerating?160:0),volume:.10+Math.min(kmh/100,1)*.035+(accelerating?.025:0)};
 }
-
-function startBgm() {
-    if (bgmTimer) return
-
-    const playNote = () => {
-        if (!ctx || ctx.state !== 'running') {
-            bgmTimer = setTimeout(playNote, 500)
-            return
-        }
-
-        const time = ctx.currentTime
-        const osc = ctx.createOscillator()
-        const gain = ctx.createGain()
-
-        osc.type = 'sine'
-        // A simple relaxing pentatonic sequence
-        const noteSequence = [0, 2, 4, 2, 3, 1, 0, 5]
-        const note = notes[noteSequence[bgmStep % noteSequence.length]]
-
-        // Add some random variation
-        osc.frequency.setValueAtTime(note / 2, time) // Lower octave for relaxing vibe
-
-        gain.gain.setValueAtTime(0, time)
-        gain.gain.linearRampToValueAtTime(0.3, time + 0.1)
-        gain.gain.exponentialRampToValueAtTime(0.01, time + 1.0)
-
-        osc.connect(gain)
-        gain.connect(bgmGain)
-
-        osc.start(time)
-        osc.stop(time + 1.2)
-
-        bgmStep++
-        bgmTimer = setTimeout(playNote, 800) // 800ms per note
-    }
-
-    playNote()
-}
-
-export function updateEngine(speed, maxSpeed, isBraking) {
-    if (!ctx || ctx.state !== 'running' || !engineOsc) return
-
-    const speedR = Math.max(0, Math.min(1, Math.abs(speed) / maxSpeed))
-
-    // Base idle: 45Hz, Max RPM: 150Hz
-    const targetFreq = 45 + speedR * 105
-    engineOsc.frequency.setTargetAtTime(targetFreq, ctx.currentTime, 0.1)
-
-    // Volume based on speed (idle is quiet)
-    const targetGain = 0.1 + speedR * 0.15
-    engineGain.gain.setTargetAtTime(targetGain, ctx.currentTime, 0.1)
-
-    // Brake noise
-    if (isBraking && Math.abs(speed) > 1) {
-        brakeGain.gain.setTargetAtTime(0.15, ctx.currentTime, 0.05)
-    } else {
-        brakeGain.gain.setTargetAtTime(0, ctx.currentTime, 0.1)
-    }
-}
-
-export function playDoor(isOpen) {
-    if (!ctx || ctx.state !== 'running') return
-
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-
-    osc.type = 'triangle'
-    if (isOpen) {
-        osc.frequency.setValueAtTime(400, t)
-        osc.frequency.linearRampToValueAtTime(800, t + 0.5)
-    } else {
-        osc.frequency.setValueAtTime(800, t)
-        osc.frequency.linearRampToValueAtTime(400, t + 0.5)
-    }
-
-    // Pneumatic hiss simulation
-    const hiss = ctx.createBufferSource()
-    hiss.buffer = brakeNoise.buffer
-    const hissFilter = ctx.createBiquadFilter()
-    hissFilter.type = 'bandpass'
-    hissFilter.frequency.value = 2000
-    hiss.connect(hissFilter)
-
-    const hissGain = ctx.createGain()
-    hissFilter.connect(hissGain)
-    hissGain.connect(masterGain)
-
-    gain.gain.setValueAtTime(0, t)
-    gain.gain.linearRampToValueAtTime(0.2, t + 0.1)
-    gain.gain.linearRampToValueAtTime(0, t + 0.5)
-
-    hissGain.gain.setValueAtTime(0, t)
-    hissGain.gain.linearRampToValueAtTime(0.1, t + 0.1)
-    hissGain.gain.linearRampToValueAtTime(0, t + 0.8)
-
-    osc.connect(gain)
-    gain.connect(masterGain)
-
-    osc.start(t)
-    osc.stop(t + 0.6)
-    hiss.start(t)
-    hiss.stop(t + 0.9)
-}
-
-function playTone(freq, type, duration, vol = 0.3) {
-    if (!ctx || ctx.state !== 'running') return
-    const t = ctx.currentTime
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-
-    osc.type = type
-    osc.frequency.value = freq
-
-    gain.gain.setValueAtTime(vol, t)
-    gain.gain.exponentialRampToValueAtTime(0.01, t + duration)
-
-    osc.connect(gain)
-    gain.connect(masterGain)
-
-    osc.start(t)
-    osc.stop(t + duration)
-}
-
-export function playBoard() {
-    playTone(880, 'sine', 0.2, 0.1)    // High beep
-    setTimeout(() => playTone(1108, 'sine', 0.3, 0.1), 100)
-}
-
-export function playDrop() {
-    playTone(659, 'sine', 0.15, 0.1)   // Low beep
-    setTimeout(() => playTone(523, 'sine', 0.2, 0.1), 100)
-}
-
-export function playScore(quality) {
-    if (!ctx || ctx.state !== 'running') return
-    const t = ctx.currentTime
-
-    if (quality === 'perfect') {
-        playTone(523.25, 'sine', 0.2, 0.2) // C5
-        setTimeout(() => playTone(659.25, 'sine', 0.2, 0.2), 150) // E5
-        setTimeout(() => playTone(783.99, 'sine', 0.4, 0.2), 300) // G5
-    } else if (quality === 'good') {
-        playTone(440.00, 'sine', 0.2, 0.2) // A4
-        setTimeout(() => playTone(523.25, 'sine', 0.4, 0.2), 200) // C5
-    } else {
-        // bad
-        playTone(349.23, 'square', 0.5, 0.1) // F4
-    }
-}
-
-export function playCrash() {
-    if (!ctx || ctx.state !== 'running') return
-    const t = ctx.currentTime
-
-    const hiss = ctx.createBufferSource()
-    hiss.buffer = brakeNoise.buffer
-    const hissFilter = ctx.createBiquadFilter()
-    hissFilter.type = 'lowpass'
-    hissFilter.frequency.value = 800
-    hiss.connect(hissFilter)
-
-    const gain = ctx.createGain()
-    gain.gain.setValueAtTime(0.8, t)
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.8)
-
-    hissFilter.connect(gain)
-    gain.connect(masterGain)
-    hiss.start(t)
-    hiss.stop(t + 0.9)
-
-    playTone(150, 'sawtooth', 0.5, 0.4)
-}
-
-export function playMiss() {
-    playTone(200, 'sawtooth', 0.3, 0.2)
-    setTimeout(() => playTone(150, 'sawtooth', 0.5, 0.2), 200)
+export function createEngineSound(onUnavailable=()=>{}) {
+ let context,master,engine,intake,filter,noiseFilter,pulse,muted=false,unavailable=false;
+ const target=(param,value,time)=>{param.cancelScheduledValues(time);param.setTargetAtTime(value,time,.10);};
+ function silence(){if(context&&master){master.gain.cancelScheduledValues(context.currentTime);master.gain.setValueAtTime(0,context.currentTime);}}
+ function initialize(){
+  const AudioContext=globalThis.AudioContext||globalThis.webkitAudioContext;
+  if(!AudioContext)throw Error('Audio is not supported');
+  context=new AudioContext();master=context.createGain();master.gain.value=0;master.connect(context.destination);
+  filter=context.createBiquadFilter();filter.type='lowpass';filter.frequency.value=230;filter.Q.value=.5;filter.connect(master);
+  const mix=context.createGain();mix.gain.value=.42;mix.connect(filter);
+  engine=context.createOscillator();engine.type='sawtooth';engine.frequency.value=30;engine.connect(mix);
+  intake=context.createOscillator();intake.type='triangle';intake.frequency.value=15;
+  const low=context.createGain();low.gain.value=.28;intake.connect(low);low.connect(filter);
+  pulse=context.createOscillator();pulse.frequency.value=8;
+  const flutter=context.createGain();flutter.gain.value=.06;pulse.connect(flutter);flutter.connect(mix.gain);
+  const buffer=context.createBuffer(1,context.sampleRate*2,context.sampleRate),samples=buffer.getChannelData(0);
+  for(let i=0;i<samples.length;i++)samples[i]=(Math.random()*2-1)*.3;
+  const noise=context.createBufferSource();noise.buffer=buffer;noise.loop=true;
+  noiseFilter=context.createBiquadFilter();noiseFilter.type='bandpass';noiseFilter.frequency.value=180;noiseFilter.Q.value=.7;
+  const noiseLevel=context.createGain();noiseLevel.gain.value=.18;noise.connect(noiseFilter);noiseFilter.connect(noiseLevel);noiseLevel.connect(master);
+  engine.start();intake.start();pulse.start();noise.start();
+ }
+ function unlock(){
+  if(unavailable||muted)return;
+  try{if(!context)initialize();if(context.state!=='running')context.resume().catch(()=>{});}
+  catch{silence();context?.close().catch(()=>{});unavailable=true;onUnavailable();}
+ }
+ function update(state,keys){
+  if(!context||unavailable)return;
+  if(muted||state.phase!=='playing'||document.hidden){silence();return;}
+  const accelerating=!state.door&&!keys.has('s')&&!keys.has('arrowdown')&&(keys.has('w')||keys.has('arrowup')||keys.has('r'));
+  const p=engineParameters(state.v,accelerating),time=context.currentTime;
+  target(engine.frequency,p.frequency,time);target(intake.frequency,p.frequency/2,time);
+  target(pulse.frequency,p.frequency/4,time);target(filter.frequency,p.cutoff,time);target(noiseFilter.frequency,p.cutoff*.7,time);
+  target(master.gain,p.volume,time);
+ }
+ function toggle(){muted=!muted;if(muted)silence();else unlock();return muted;}
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)silence();});
+ window.addEventListener('pagehide',silence);
+ return {unlock,update,toggle};
 }
